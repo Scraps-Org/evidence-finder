@@ -1,0 +1,94 @@
+{
+  "artifact_refs": {
+    "merged_task_shas": [
+      "29aca32a035e85ecc9503ccdf6e819491858c39e"
+    ]
+  },
+  "base_ref": "47b0fe0d64ca8801c1ff4e6b58c539ad170d9cc5",
+  "code_integration_sha": "4f0ce389e1b3f78dcca18a04db7da7ec0eb96824",
+  "contract_version": "1.0",
+  "correlation_id": "eval-evidence-finder-a5b6ec5df1d8",
+  "dispatch_id": "eval-evidence-finder-a5b6ec5df1d8-a9",
+  "engine_status": "engine_completed",
+  "generated_at": "2026-06-20T18:41:41.556036Z",
+  "goal_doc_sha": "a5b6ec5df1d8",
+  "goal_id": "evidence-finder-a5b6ec5df1d8",
+  "integration_branch": "scraps/goal/evidence-finder-a5b6ec5df1d8",
+  "known_gaps": [],
+  "metrics_ref": {
+    "path": "metrics.json",
+    "sha256": "84590594d56f4389d4f504870940a61358b6c87d5fce5b597dcc880250afb42b"
+  },
+  "owner_verify_result": {
+    "checks": [
+      {
+        "name": "evidence-finder-landing",
+        "status": "green",
+        "tier": "extended"
+      }
+    ],
+    "merged_task_count": 1,
+    "submit_gate_passed": true,
+    "tier": "extended"
+  },
+  "phase_gate_record": {},
+  "recorded_acceptance_measurement": [
+    {
+      "criterion": "D1-scaffold",
+      "how_measured": "none",
+      "observed": "not_engine_measurable"
+    },
+    {
+      "criterion": "PKG-HEALTH",
+      "how_measured": "none",
+      "observed": "not_engine_measurable"
+    }
+  ],
+  "risk_permission_audit": {
+    "dispatch_blocks": [],
+    "guard_blocks": [],
+    "material_risk_holds": [],
+    "owner_required": false
+  },
+  "target_repo": "Scraps-Org/evidence-finder",
+  "verification_evidence": [
+    {
+      "checks": [
+        {
+          "command": "pnpm install --frozen-lockfile",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/landing-page.test.tsx",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/Welcome.test.tsx",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec tsc --noEmit",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm build",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm run typecheck",
+          "exit_code": 0,
+          "status": "passed"
+        }
+      ],
+      "log_ref": "event:task.verification_evidence:evidence-finder-landing",
+      "name": "evidence-finder-landing",
+      "status": "green",
+      "tier": "extended"
+    }
+  ]
+}

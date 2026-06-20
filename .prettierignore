@@ -4,3 +4,6 @@ coverage
 pnpm-lock.yaml
 *.md
 next-env.d.ts
+
+# scraps eval-loop metadata (engine-written handoff) — not product code
+.scraps/
