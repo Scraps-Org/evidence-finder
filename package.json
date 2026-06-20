@@ -2,7 +2,7 @@
   "name": "evidence-finder",
   "version": "0.1.0",
   "private": true,
-  "description": "\ubc94\uc6a9 Next.js 15 (App Router) + TypeScript strict + Tailwind 4 + Vitest + RTL \ud15c\ud50c\ub9bf",
+  "description": "범용 Next.js 15 (App Router) + TypeScript strict + Tailwind 4 + Vitest + RTL 템플릿",
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -15,9 +15,9 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write . && eslint --fix .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --passWithNoTests --coverage"
   },
   "dependencies": {
     "next": "^15.1.6",
