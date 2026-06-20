@@ -1,8 +1,8 @@
 {
-  "name": "nextjs-service-template",
+  "name": "evidence-finder",
   "version": "0.1.0",
   "private": true,
-  "description": "범용 Next.js 15 (App Router) + TypeScript strict + Tailwind 4 + Vitest + RTL 템플릿",
+  "description": "\ubc94\uc6a9 Next.js 15 (App Router) + TypeScript strict + Tailwind 4 + Vitest + RTL \ud15c\ud50c\ub9bf",
   "license": "MIT",
   "engines": {
     "node": ">=22"
