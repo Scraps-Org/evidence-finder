@@ -1,5 +1,5 @@
-import { Welcome } from '~/components/Welcome';
+import { EvidenceFinder } from '~/components/EvidenceFinder';
 
 export default function Home() {
-  return <Welcome />;
+  return <EvidenceFinder />;
 }
