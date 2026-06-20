@@ -1,0 +1,14 @@
+# 범용 Next.js 템플릿용 docker compose.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nextjs-service-template:latest
+    container_name: nextjs-service-template
+    env_file:
+      - .env
+    ports:
+      - '3000:3000'
+    restart: unless-stopped

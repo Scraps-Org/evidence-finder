@@ -1,0 +1,38 @@
+{
+  "//": "팀 전체가 공유하는 Claude Code 설정. 레포에 커밋되며 모든 개발자에게 동일하게 적용.",
+
+  "permissions": {
+    "//": "자주 쓰는 안전한 명령어는 자동 허용",
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx:*)",
+      "Bash(make:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(pre-commit:*)"
+    ],
+    "//": "위험한 작업은 항상 명시적 승인",
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)"
+    ]
+  },
+
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "120000",
+    "MAX_THINKING_TOKENS": "10000"
+  }
+}
