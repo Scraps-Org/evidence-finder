@@ -5,9 +5,9 @@ export function EvidenceFinder() {
         evidence-finder — 유포된 증거를 찾습니다
       </h1>
       <p className="mt-4 text-lg text-gray-600 dark:text-gray-400">
-        이 서비스는 공개 웹에서 후보/증거 URL과 페이지 메타데이터를 표시합니다. 
-        분산된 미디어는 기본적으로 숨겨지고 항목별로 선택적으로 노출됩니다.
-        공개적으로 인덱싱된 웹에 한정되어 있으며, 완전한 스캔은 하지 않습니다.
+        이 서비스는 공개 웹에서 후보/증거 URL과 페이지 메타데이터를 표시합니다. 분산된 미디어는
+        기본적으로 숨겨지고 항목별로 선택적으로 노출됩니다. 공개적으로 인덱싱된 웹에 한정되어
+        있으며, 완전한 스캔은 하지 않습니다.
       </p>
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">

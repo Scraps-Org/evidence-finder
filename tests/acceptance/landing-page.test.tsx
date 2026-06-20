@@ -10,10 +10,10 @@ describe('Landing Page Acceptance', () => {
 
   it('should render a heading describing the evidence-finder service', () => {
     render(<Page />);
-    
+
     // Search for a heading that contains either "증거" (Korean for evidence) or "evidence"
     const heading = screen.getByRole('heading', { name: new RegExp('증거|evidence', 'i') });
-    
+
     expect(heading).toBeTruthy();
   });
 });
