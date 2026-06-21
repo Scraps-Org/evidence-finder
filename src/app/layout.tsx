@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'nextjs-service-template',
-  description: 'nextjs-service-template — 범용 Next.js 15 App Router 템플릿',
+  title: 'evidence-finder',
+  description: 'evidence-finder — 유포된 증거를 찾습니다',
 };
 
 export default function RootLayout({
