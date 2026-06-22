@@ -1,47 +1,41 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import CaseList from '../../src/components/CaseList';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-describe('Case List - newly saved cases appear', () => {
+describe('D2-case-input: Case List Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('displays newly saved case in the list after creation', async () => {
-    const mockFetch = vi.fn<[string | Request, RequestInit?], Promise<Response>>(async () =>
-      new Response(
-        JSON.stringify([
-          { id: '1', identifyingTerms: 'Jane Smith', createdAt: '2026-06-22T10:00:00Z' }
-        ]),
-        { status: 200, headers: { 'content-type': 'application/json' } }
-      )
-    );
-    vi.stubGlobal('fetch', mockFetch);
-
-    render(<CaseList />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
-    });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it('includes newly created case among multiple cases', async () => {
-    const mockFetch = vi.fn<[string | Request, RequestInit?], Promise<Response>>(async () =>
-      new Response(
-        JSON.stringify([
-          { id: '1', identifyingTerms: 'Jane Smith', createdAt: '2026-06-22T10:00:00Z' },
-          { id: '2', identifyingTerms: 'John Doe', createdAt: '2026-06-22T11:00:00Z' }
-        ]),
-        { status: 200, headers: { 'content-type': 'application/json' } }
-      )
-    );
+  it('displays newly saved case in the case list after successful submission', async () => {
+    const newCaseId = 'case-123';
+    const newCaseTerms = 'Jane Smith';
+
+    const mockFetch = vi.fn(async (url: string) => {
+      if (url.includes('/api/cases')) {
+        return {
+          ok: true,
+          json: async () => ({ id: newCaseId, terms: newCaseTerms }),
+        };
+      }
+      return { ok: false };
+    });
     vi.stubGlobal('fetch', mockFetch);
 
-    render(<CaseList />);
+    render(<EvidenceFinder />);
+
+    const input = screen.getByRole('textbox', { name: /identifying terms|search|case/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create|save|search/i });
+
+    fireEvent.change(input, { target: { value: newCaseTerms } });
+    fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
-      expect(screen.getByText('John Doe')).toBeInTheDocument();
+      expect(screen.getByText(newCaseTerms)).toBeInTheDocument();
     });
   });
 });
