@@ -1,23 +1,20 @@
+import { readdir, readFile } from 'fs/promises';
+import { join } from 'path';
 import { describe, it, expect } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
 
 describe('Case table migration', () => {
-  it('has exactly one migration file that creates the Case table', () => {
-    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-    expect(fs.existsSync(migrationsDir)).toBe(true);
+  it('has exactly one migration file with CREATE TABLE Case', async () => {
+    const migrationsDir = join(process.cwd(), 'prisma', 'migrations');
+    const entries = await readdir(migrationsDir, { withFileTypes: true });
 
-    const migrationFolders = fs
-      .readdirSync(migrationsDir)
-      .filter((f) => fs.statSync(path.join(migrationsDir, f)).isDirectory());
+    const migrationDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
 
-    expect(migrationFolders).toHaveLength(1);
+    expect(migrationDirs.length).toBe(1);
 
-    const migrationFile = path.join(migrationsDir, migrationFolders[0]!, 'migration.sql');
-    expect(fs.existsSync(migrationFile)).toBe(true);
+    const migrationFile = join(migrationsDir, migrationDirs[0]!, 'migration.sql');
+    const content = await readFile(migrationFile, 'utf-8');
 
-    const content = fs.readFileSync(migrationFile, 'utf-8');
-    expect(content).toMatch(/CREATE TABLE.*Case/i);
-    expect(content).toMatch(/identifyingTerms/i);
+    expect(content).toMatch(/CREATE\s+TABLE\s+"Case"/i);
+    expect(content).toMatch(/identifyingTerms\s+TEXT/i);
   });
 });
