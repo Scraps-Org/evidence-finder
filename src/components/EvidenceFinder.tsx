@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-export function EvidenceFinder() {
+export default function EvidenceFinder() {
   const [terms, setTerms] = useState('');
-  const [cases, setCases] = useState<{id: string, terms: string}[]>([]);
+  const [cases, setCases] = useState<{ id: string; terms: string }[]>([]);
 
   const fetchCases = async () => {
-    try {
-      const res = await fetch('/api/cases');
-      const data = await res.json();
-      setCases(data);
-    } catch (e) {}
+    const res = await fetch('/api/cases');
+    const data = await res.json();
+    setCases(data);
   };
 
   useEffect(() => { fetchCases(); }, []);
@@ -17,13 +15,13 @@ export function EvidenceFinder() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!terms.trim()) return;
-    
+
     const res = await fetch('/api/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ terms }),
     });
-    
+
     if (res.ok) {
       setTerms('');
       await fetchCases();
@@ -37,7 +35,7 @@ export function EvidenceFinder() {
           role="textbox"
           value={terms} 
           onChange={(e) => setTerms(e.target.value)} 
-          placeholder="Enter identifying terms"
+          placeholder="Enter identifying terms..."
           className="border p-2"
         />
         <button type="submit" className="bg-blue-500 text-white p-2">Save Case</button>
