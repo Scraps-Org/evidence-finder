@@ -2,11 +2,11 @@
 product: "evidence-finder"
 owner: lean-startup-agent
 status: active
-updated: 2026-06-20
-goal_version: a5b6ec5df1d8
+updated: 2026-06-22
+goal_version: e39606331ca7
 acceptance:
-  - id: D1-scaffold
-    hint: "package.json name is \"evidence-finder\" (no create-next-app/template remnants) and the home page renders a heading describing the service (contains \"증거\" or \"evidence\"); next build + tsc --noEmit pass."
+  - id: D2-case-input
+    hint: "The case-creation form accepts identifying terms and, on submit, a Next.js API route inserts a row into a Prisma `Case` model on Vercel Postgres (a migration under prisma/migrations/ creates the Case table); the newly saved case is read back and appears in the case list; empty or whitespace-only input is rejected and writes no row. build + tsc --noEmit both pass."
     high_impact: true
   - id: PKG-HEALTH
     hint: "clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다."
@@ -19,7 +19,7 @@ acceptance:
 
 ## 목표 (1줄)
 
-The app is the evidence-finder product (renamed) with a static landing page describing the service.
+A user can enter the identifying terms (their name/identifier) to search for, saved as a case.
 
 ## 해야할 일
 
@@ -41,7 +41,7 @@ Out of scope:
 
 frontmatter `acceptance` 와 1:1. evaluator 가 게이트에서 판단형 기준(P1)으로 도출.
 
-- D1-scaffold: package.json name is "evidence-finder" (no create-next-app/template remnants) and the home page renders a heading describing the service (contains "증거" or "evidence"); next build + tsc --noEmit pass.
+- D2-case-input: The case-creation form accepts identifying terms and, on submit, a Next.js API route inserts a row into a Prisma `Case` model on Vercel Postgres (a migration under prisma/migrations/ creates the Case table); the newly saved case is read back and appears in the case list; empty or whitespace-only input is rejected and writes no row. build + tsc --noEmit both pass.
 - PKG-HEALTH: clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다.
 
 ## 코딩 가이드 (planner)
