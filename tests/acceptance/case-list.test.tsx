@@ -1,52 +1,48 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
-import CaseList from '../../src/components/CaseList';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import Page from '../../src/app/page';
 
-describe('Case List (Newly Saved Cases Display)', () => {
+describe('D2-case-input: Case List Display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('displays newly saved case in the case list', async () => {
-    const mockCases = [
-      { id: '1', identifyingTerms: 'John Doe', createdAt: new Date().toISOString() },
-    ];
-
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ cases: mockCases }),
-    });
-
-    render(<CaseList />);
-
-    await waitFor(() => {
-      expect(screen.getByText('John Doe')).toBeInTheDocument();
-    });
-  });
-
-  it('updates list when a new case is created', async () => {
+  it('displays newly created case in the case list', async () => {
     const user = userEvent.setup();
-    const initialCases = [{ id: '1', identifyingTerms: 'Jane Smith', createdAt: new Date().toISOString() }];
-    const updatedCases = [
-      ...initialCases,
-      { id: '2', identifyingTerms: 'New Case', createdAt: new Date().toISOString() },
-    ];
+    const testCaseName = `Test Case ${Date.now()}`;
 
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ cases: initialCases }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => updatedCases });
-
-    const { rerender } = render(<CaseList />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+    const mockFetch = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/cases') && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: '1', identifyingTerms: testCaseName }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify([{ id: '1', identifyingTerms: testCaseName }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
     });
 
-    rerender(<CaseList />);
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<Page />);
+
+    const input = screen.getByRole('textbox', {
+      name: /identifying terms/i,
+    }) as HTMLInputElement;
+    const submitButton = screen.getByRole('button', { name: /create case/i });
+
+    await user.type(input, testCaseName);
+    await user.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText('New Case')).toBeInTheDocument();
+      expect(screen.getByText(testCaseName)).toBeInTheDocument();
     });
   });
 });
