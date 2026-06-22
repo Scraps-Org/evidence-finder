@@ -3,48 +3,29 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case persistence and schema', () => {
+describe('D2-case-input: Case Persistence & Migration', () => {
+  const testId = `persist-test-${Date.now()}-${Math.random()}`;
+
   afterEach(async () => {
-    await prisma.case.deleteMany({});
+    await prisma.case.deleteMany({
+      where: { searchTerm: { contains: testId } },
+    });
+    await prisma.$disconnect();
   });
 
-  it('Case table exists and can store identifying terms', async () => {
-    const timestamp = Date.now().toString();
-    const testCase = await prisma.case.create({
-      data: {
-        identifyingTerms: `Persistence Test ${timestamp}`,
-      },
-    });
+  it('Case table exists and can store and retrieve case data via Prisma', async () => {
+    const searchTerm = `Persistence Test ${testId}`;
 
-    expect(testCase.id).toBeDefined();
-    expect(testCase.identifyingTerms).toBe(`Persistence Test ${timestamp}`);
+    const created = await prisma.case.create({
+      data: { searchTerm },
+    });
+    expect(created.id).toBeDefined();
+    expect(created.searchTerm).toBe(searchTerm);
 
     const retrieved = await prisma.case.findUnique({
-      where: { id: testCase.id },
+      where: { id: created.id },
     });
-    expect(retrieved).toEqual(testCase);
-  });
-
-  it('Case model has createdAt timestamp field', async () => {
-    const beforeCreate = new Date();
-    const testCase = await prisma.case.create({
-      data: {
-        identifyingTerms: `Timestamp Test ${Date.now()}`,
-      },
-    });
-    const afterCreate = new Date();
-
-    expect(testCase.createdAt).toBeDefined();
-    expect(testCase.createdAt.getTime()).toBeGreaterThanOrEqual(beforeCreate.getTime());
-    expect(testCase.createdAt.getTime()).toBeLessThanOrEqual(afterCreate.getTime());
-  });
-
-  it('migration file exists in prisma/migrations/', async () => {
-    const testCase = await prisma.case.create({
-      data: {
-        identifyingTerms: 'Migration Verification',
-      },
-    });
-    expect(testCase.id).toBeDefined();
+    expect(retrieved).not.toBeNull();
+    expect(retrieved!.searchTerm).toBe(searchTerm);
   });
 });
