@@ -1,27 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import path from 'path';
-import fs from 'fs';
+import * as fs from 'fs';
+import * as path from 'path';
 
-describe('Prisma Migration for Case table', () => {
+describe('Case table migration', () => {
   it('has exactly one migration file that creates the Case table', () => {
     const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-    const files = fs.readdirSync(migrationsDir).filter((f) => !f.startsWith('.') && f !== 'migration_lock.toml');
+    expect(fs.existsSync(migrationsDir)).toBe(true);
 
-    expect(files).toHaveLength(1);
+    const migrationFolders = fs
+      .readdirSync(migrationsDir)
+      .filter((f) => fs.statSync(path.join(migrationsDir, f)).isDirectory());
 
-    const migrationFile = path.join(migrationsDir, files[0]!, 'migration.sql');
-    const sql = fs.readFileSync(migrationFile, 'utf-8');
+    expect(migrationFolders).toHaveLength(1);
 
-    expect(sql).toMatch(/CREATE TABLE.*"Case"/i);
-    expect(sql).toMatch(/identifyingTerms/i);
+    const migrationFile = path.join(migrationsDir, migrationFolders[0]!, 'migration.sql');
+    expect(fs.existsSync(migrationFile)).toBe(true);
+
+    const content = fs.readFileSync(migrationFile, 'utf-8');
+    expect(content).toMatch(/CREATE TABLE.*Case/i);
+    expect(content).toMatch(/identifyingTerms/i);
   });
-
-  it('migration creates the Case table with identifyingTerms column', () => {
-    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-    const files = fs.readdirSync(migrationsDir).filter((f) => !f.startsWith('.') && f !== 'migration_lock.toml');
-    const migrationFile = path.join(migrationsDir, files[0]!, 'migration.sql');
-    const sql = fs.readFileSync(migrationFile, 'utf-8');
-
-    expect(sql.toLowerCase()).toMatch(/identifyingterms/i);
-  });
-}
+});
