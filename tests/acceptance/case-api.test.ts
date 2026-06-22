@@ -17,7 +17,7 @@ describe('Case API Route', () => {
 
   it('creates a case when valid terms are provided', async () => {
     const mockCase = { id: '1', terms: 'Jane Doe' };
-    vi.mocked(prisma.case.create).mockResolvedValue(mockCase as unknown as any);
+    vi.mocked(prisma.case.create).mockResolvedValue(mockCase as never);
 
     const req = new Request('http://localhost/api/cases', {
       method: 'POST',
