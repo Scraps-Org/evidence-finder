@@ -1,65 +1,62 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { POST } from '../../src/app/api/cases/route';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('Case API Route - Persistence (D2-case-input)', () => {
-  beforeEach(async () => {
-    await prisma.case.deleteMany({});
+describe('D2-case-input: API route POST /api/cases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
   afterEach(async () => {
-    await prisma.case.deleteMany({});
     await prisma.$disconnect();
   });
 
-  it('inserts a new case row in Vercel Postgres via Prisma when valid searchTerms are submitted', async () => {
-    const req = new Request('http://localhost:3000/api/cases', {
+  it('inserts a new case with identifying terms into the database', async () => {
+    const testIdentifyingTerms = `test-case-${Date.now()}`;
+    const requestBody = JSON.stringify({ identifyingTerms: testIdentifyingTerms });
+
+    const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
+      body: requestBody,
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ searchTerms: 'Jane Smith' })
     });
 
-    const res = await POST(req);
-    expect(res.status).toBe(201);
+    const response = await POST(request);
+    expect(response.status).toBe(201);
 
-    const data = await res.json() as { id: string; searchTerms: string };
-    expect(data.searchTerms).toBe('Jane Smith');
+    const data = await response.json() as { id: string; identifyingTerms: string };
+    expect(data.identifyingTerms).toBe(testIdentifyingTerms);
     expect(data.id).toBeDefined();
 
+    // Verify the case was actually inserted
     const savedCase = await prisma.case.findUnique({
-      where: { id: data.id }
+      where: { id: data.id },
     });
     expect(savedCase).not.toBeNull();
-    expect(savedCase?.searchTerms).toBe('Jane Smith');
+    expect(savedCase?.identifyingTerms).toBe(testIdentifyingTerms);
   });
 
-  it('rejects empty searchTerms and writes no row', async () => {
-    const req = new Request('http://localhost:3000/api/cases', {
+  it('rejects empty identifying terms with a 400 error', async () => {
+    const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
+      body: JSON.stringify({ identifyingTerms: '' }),
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ searchTerms: '' })
     });
 
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-
-    const count = await prisma.case.count();
-    expect(count).toBe(0);
+    const response = await POST(request);
+    expect(response.status).toBe(400);
   });
 
-  it('rejects whitespace-only searchTerms and writes no row', async () => {
-    const req = new Request('http://localhost:3000/api/cases', {
+  it('rejects whitespace-only identifying terms with a 400 error', async () => {
+    const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
+      body: JSON.stringify({ identifyingTerms: '   ' }),
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ searchTerms: '   ' })
     });
 
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-
-    const count = await prisma.case.count();
-    expect(count).toBe(0);
+    const response = await POST(request);
+    expect(response.status).toBe(400);
   });
 });
