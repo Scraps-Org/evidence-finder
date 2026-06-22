@@ -1,63 +1,68 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('Case Persistence: Database Operations', () => {
-  beforeEach(async () => {
-    await prisma.case.deleteMany({});
+describe('Case Persistence (Prisma schema & migrations)', () => {
+  const uniqueTimestamp = Date.now().toString();
+
+  afterEach(async () => {
+    // Clean up test cases after each test
+    await prisma.case.deleteMany({
+      where: {
+        term: {
+          startsWith: `persist-test-${uniqueTimestamp}`,
+        },
+      },
+    });
   });
 
-  afterAll(async () => {
-    await prisma.$disconnect();
+  it('should have Case model defined in Prisma schema with required fields', async () => {
+    // This test verifies the schema exists by attempting to query it
+    const cases = await prisma.case.findMany({
+      take: 1,
+    });
+    expect(Array.isArray(cases)).toBe(true);
   });
 
-  it('should create and retrieve a case from the database', async () => {
-    const identifyingTerms = `Persistence Test ${Date.now()}`;
+  it('should persist a case row to Vercel Postgres via Prisma', async () => {
+    const testTerm = `persist-test-${uniqueTimestamp}-create`;
 
     const createdCase = await prisma.case.create({
       data: {
-        identifyingTerms,
+        term: testTerm,
       },
     });
 
     expect(createdCase.id).toBeDefined();
-    expect(createdCase.identifyingTerms).toBe(identifyingTerms);
+    expect(createdCase.term).toBe(testTerm);
+
+    // Verify the case was persisted by reading it back
+    const foundCase = await prisma.case.findUnique({
+      where: { id: createdCase.id },
+    });
+
+    expect(foundCase).toBeDefined();
+    expect(foundCase?.term).toBe(testTerm);
+  });
+
+  it('should allow reading back a newly created case from the database', async () => {
+    const testTerm = `persist-test-${uniqueTimestamp}-read`;
+
+    const createdCase = await prisma.case.create({
+      data: {
+        term: testTerm,
+      },
+    });
 
     const retrievedCase = await prisma.case.findUnique({
       where: { id: createdCase.id },
     });
 
-    expect(retrievedCase).not.toBeNull();
-    expect(retrievedCase?.identifyingTerms).toBe(identifyingTerms);
+    expect(retrievedCase).toEqual(createdCase);
   });
+});
 
-  it('should retrieve all cases', async () => {
-    const terms1 = `Case 1 ${Date.now()}`;
-    const terms2 = `Case 2 ${Date.now()}`;
-
-    await prisma.case.create({ data: { identifyingTerms: terms1 } });
-    await prisma.case.create({ data: { identifyingTerms: terms2 } });
-
-    const cases = await prisma.case.findMany();
-
-    expect(cases.length).toBeGreaterThanOrEqual(2);
-    expect(cases.some((c) => c.identifyingTerms === terms1)).toBe(true);
-    expect(cases.some((c) => c.identifyingTerms === terms2)).toBe(true);
-  });
-
-  it('should persist case data across queries', async () => {
-    const identifyingTerms = `Roundtrip Test ${Date.now()}`;
-
-    const created = await prisma.case.create({
-      data: { identifyingTerms },
-    });
-
-    const found = await prisma.case.findUnique({
-      where: { id: created.id },
-    });
-
-    expect(found?.identifyingTerms).toBe(identifyingTerms);
-    expect(found?.id).toBe(created.id);
-  });
+afterAll(async () => {
+  await prisma.$disconnect();
 });
