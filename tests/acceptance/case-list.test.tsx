@@ -1,24 +1,42 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import Page from '../../src/app/page';
+import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-describe('Case List Integration (D2-case-input)', () => {
+describe('D2-case-input: Case list display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('displays newly created case in the case list after save', async () => {
-    const testCaseName = `Test Case ${new Date().getTime()}`;
-    render(<Page />);
+  it('displays newly created case in the case list after successful save', async () => {
+    const user = userEvent.setup();
+    const testTerms = `New Case ${Date.now()}`;
 
-    const input = screen.getByRole('textbox', { name: /identifying term|search term|case name|identifier/i });
-    const submitButton = screen.getByRole('button', { name: /submit|create|save|search/i });
+    const mockFetch = vi.fn<[RequestInfo, RequestInit | undefined], Promise<Response>>();
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: '1', terms: testTerms }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ id: '1', terms: testTerms }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', mockFetch);
 
-    await userEvent.type(input, testCaseName);
-    await userEvent.click(submitButton);
+    render(<EvidenceFinder />);
+
+    const input = screen.getByRole('textbox', { name: /identifying terms|search/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create case|save/i });
+
+    await user.type(input, testTerms);
+    await user.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText(new RegExp(testCaseName, 'i'))).toBeInTheDocument();
+      expect(screen.getByText(testTerms)).toBeInTheDocument();
     });
   });
 });
