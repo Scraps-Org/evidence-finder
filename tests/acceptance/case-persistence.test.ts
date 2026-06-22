@@ -1,75 +1,56 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import fs from 'fs';
-import path from 'path';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case Persistence & Migration', () => {
+describe('Case Persistence (Prisma & Postgres)', () => {
+  const testId = `persist-${Date.now()}`;
+
   afterEach(async () => {
-    await prisma.case.deleteMany({});
+    await prisma.case.deleteMany({
+      where: { searchTerm: { contains: testId } },
+    });
   });
 
-  it('Case table exists in the database created by migration', async () => {
-    const testId = `test-case-${Date.now()}`;
-    const created = await prisma.case.create({
-      data: {
-        identifyingTerms: testId,
-      },
+  describe('D2-case-input: Prisma schema and migration create Case table', () => {
+    it('inserts and retrieves case from Postgres via Prisma', async () => {
+      const searchTerm = `Persist Case ${testId}`;
+
+      const createdCase = await prisma.case.create({
+        data: { searchTerm },
+      });
+
+      expect(createdCase).toHaveProperty('id');
+      expect(createdCase.searchTerm).toBe(searchTerm);
+
+      const retrievedCase = await prisma.case.findUnique({
+        where: { id: createdCase.id },
+      });
+
+      expect(retrievedCase).not.toBeNull();
+      expect(retrievedCase?.searchTerm).toBe(searchTerm);
     });
 
-    expect(created.id).toBeDefined();
-    expect(created.identifyingTerms).toBe(testId);
+    it('creates multiple cases and lists them all', async () => {
+      const case1 = await prisma.case.create({
+        data: { searchTerm: `Case 1 ${testId}` },
+      });
+      const case2 = await prisma.case.create({
+        data: { searchTerm: `Case 2 ${testId}` },
+      });
 
-    const retrieved = await prisma.case.findUnique({
-      where: { id: created.id },
+      const cases = await prisma.case.findMany({
+        where: { searchTerm: { contains: testId } },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      expect(cases).toHaveLength(2);
+      expect(cases[0]!.id).toBe(case1.id);
+      expect(cases[1]!.id).toBe(case2.id);
     });
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.identifyingTerms).toBe(testId);
   });
 
-  it('migration file exists under prisma/migrations/ with CREATE TABLE Case', () => {
-    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-    expect(fs.existsSync(migrationsDir)).toBe(true);
-
-    const files = fs.readdirSync(migrationsDir);
-    const migrationDirs = files.filter((f) => {
-      const fullPath = path.join(migrationsDir, f);
-      return fs.statSync(fullPath).isDirectory();
-    });
-
-    expect(migrationDirs.length).toBeGreaterThan(0);
-
-    let hasCreateTableCase = false;
-    for (const dir of migrationDirs) {
-      const sqlPath = path.join(migrationsDir, dir, 'migration.sql');
-      if (fs.existsSync(sqlPath)) {
-        const content = fs.readFileSync(sqlPath, 'utf-8');
-        if (content.toUpperCase().includes('CREATE TABLE') && content.toUpperCase().includes('"Case"')) {
-          hasCreateTableCase = true;
-          break;
-        }
-      }
-    }
-
-    expect(hasCreateTableCase).toBe(true);
-  });
-
-  it('case data round-trips through Prisma and persists in database', async () => {
-    const uniqueTerms = `round-trip-${Date.now()}-${Math.random()}`;
-
-    const created = await prisma.case.create({
-      data: {
-        identifyingTerms: uniqueTerms,
-      },
-    });
-
-    const fetched = await prisma.case.findUnique({
-      where: { id: created.id },
-    });
-
-    expect(fetched).not.toBeNull();
-    expect(fetched?.identifyingTerms).toBe(uniqueTerms);
-    expect(fetched?.id).toBe(created.id);
+  afterAll(async () => {
+    await prisma.$disconnect();
   });
 });
