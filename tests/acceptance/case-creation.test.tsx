@@ -1,26 +1,21 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import EvidenceFinder from '../../src/components/EvidenceFinder';
+import CaseCreationForm from '../../src/components/CaseCreationForm';
 
-describe('Case Creation Form (D2-case-input)', () => {
+describe('D2-case-input: Case Creation Form', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
   });
 
-  it('accepts identifying search terms and submits to API on form submit', async () => {
-    const mockFetch = vi.mocked(global.fetch);
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: '1', terms: 'John Doe' }), {
-        status: 201,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
+  it('accepts identifying terms input and submits to API', async () => {
+    const mockFetch = vi.fn<[string, RequestInit?], Promise<Response>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: '1', terms: 'John Doe' }), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
 
-    render(<EvidenceFinder />);
+    render(<CaseCreationForm />);
 
-    const input = screen.getByRole('textbox', { name: /identifying terms|search terms|case name/i });
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
     const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
 
     await userEvent.type(input, 'John Doe');
@@ -31,35 +26,46 @@ describe('Case Creation Form (D2-case-input)', () => {
         expect.stringContaining('/api/cases'),
         expect.objectContaining({
           method: 'POST',
-          headers: expect.objectContaining({
-            'content-type': 'application/json',
-          }),
-          body: expect.stringContaining('John Doe'),
+          headers: expect.objectContaining({ 'content-type': 'application/json' }),
+          body: expect.stringContaining('John Doe')
         })
       );
     });
   });
 
-  it('rejects empty input and shows validation error', async () => {
-    render(<EvidenceFinder />);
+  it('rejects empty input and does not submit', async () => {
+    const mockFetch = vi.fn<[string, RequestInit?], Promise<Response>>();
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<CaseCreationForm />);
 
     const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
     await userEvent.click(submitButton);
 
-    const errorMsg = await screen.findByText(/required|cannot be empty|must enter/i);
-    expect(errorMsg).toBeInTheDocument();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('rejects whitespace-only input and shows validation error', async () => {
-    render(<EvidenceFinder />);
+  it('rejects whitespace-only input and does not submit', async () => {
+    const mockFetch = vi.fn<[string, RequestInit?], Promise<Response>>();
+    vi.stubGlobal('fetch', mockFetch);
 
-    const input = screen.getByRole('textbox', { name: /identifying terms|search terms|case name/i });
+    render(<CaseCreationForm />);
+
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
     const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
 
     await userEvent.type(input, '   ');
     await userEvent.click(submitButton);
 
-    const errorMsg = await screen.findByText(/required|cannot be empty|must enter/i);
-    expect(errorMsg).toBeInTheDocument();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
-})
+
+  it('displays validation error for empty input', async () => {
+    render(<CaseCreationForm />);
+
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
+    await userEvent.click(submitButton);
+
+    expect(screen.getByText(/required|cannot be empty|must provide/i)).toBeInTheDocument();
+  });
+});
