@@ -1,31 +1,47 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import CaseList from '../../src/components/CaseList';
+import userEvent from '@testing-library/user-event';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import Page from '../../src/app/page';
 
-describe('Case List Display', () => {
+describe('D2-case-input: Case List Display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('displays newly saved case in the list', async () => {
-    const mockCases = [
-      { id: '1', searchTerms: 'John Doe', createdAt: new Date() },
-      { id: '2', searchTerms: 'Jane Smith', createdAt: new Date() },
-    ];
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ cases: mockCases }), {
+  it('should display newly saved case in the list', async () => {
+    const newCaseName = `Test Case ${Date.now()}`;
+
+    const mockFetch = vi.fn<[string, RequestInit?], Promise<Response>>();
+    mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('/api/cases') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: '1', terms: newCaseName }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify([{ id: '1', terms: newCaseName }]), {
         status: 200,
         headers: { 'content-type': 'application/json' },
-      })
-    );
+      });
+    });
+
     vi.stubGlobal('fetch', mockFetch);
 
-    render(<CaseList />);
+    render(<Page />);
+
+    const input = screen.getByRole('textbox', { name: /identifying terms|search terms|case/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
+
+    await userEvent.type(input, newCaseName);
+    await userEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText('John Doe')).toBeInTheDocument();
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+      const listItem = screen.queryByText(newCaseName);
+      expect(listItem).toBeInTheDocument();
     });
   });
 });
