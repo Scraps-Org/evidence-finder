@@ -2,54 +2,74 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import CaseList from '../../src/components/CaseList';
 
-describe('케이스 목록 표시', () => {
+describe('Case List Display [D2-case-input]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
   });
 
-  it('새로 저장된 케이스가 케이스 목록에 나타난다', async () => {
-    const newCase = {
-      id: 'case-new-1',
-      identifyingTerms: 'New Test Case',
-      createdAt: new Date().toISOString(),
-    };
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ cases: [newCase] }),
-    });
+  it('[Criterion 4] should display newly saved case in the list', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          { id: '1', identifyingTerms: 'John Doe', createdAt: new Date().toISOString() }
+        ]),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+    );
     vi.stubGlobal('fetch', mockFetch);
 
     render(<CaseList />);
 
     await waitFor(() => {
-      expect(screen.getByText('New Test Case')).toBeInTheDocument();
+      const caseItem = screen.getByText(/John Doe/i);
+      expect(caseItem).toBeInTheDocument();
     });
   });
 
-  it('여러 케이스가 저장된 후 모두 목록에 표시된다', async () => {
-    const cases = [
-      { id: 'case-1', identifyingTerms: 'Case One', createdAt: new Date().toISOString() },
-      { id: 'case-2', identifyingTerms: 'Case Two', createdAt: new Date().toISOString() },
-      { id: 'case-3', identifyingTerms: 'Case Three', createdAt: new Date().toISOString() },
-    ];
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ cases }),
-    });
+  it('should display multiple cases in the list', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          { id: '1', identifyingTerms: 'John Doe', createdAt: new Date().toISOString() },
+          { id: '2', identifyingTerms: 'Jane Smith', createdAt: new Date().toISOString() }
+        ]),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+    );
     vi.stubGlobal('fetch', mockFetch);
 
     render(<CaseList />);
 
     await waitFor(() => {
-      expect(screen.getByText('Case One')).toBeInTheDocument();
-      expect(screen.getByText('Case Two')).toBeInTheDocument();
-      expect(screen.getByText('Case Three')).toBeInTheDocument();
+      expect(screen.getByText(/John Doe/i)).toBeInTheDocument();
+      expect(screen.getByText(/Jane Smith/i)).toBeInTheDocument();
     });
   });
-});
+
+  it('should handle empty case list gracefully', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<CaseList />);
+
+    await waitFor(() => {
+      const emptyMessage = screen.queryByText(/no cases|empty/i);
+      expect(emptyMessage).toBeInTheDocument();
+    });
+  });
+}
