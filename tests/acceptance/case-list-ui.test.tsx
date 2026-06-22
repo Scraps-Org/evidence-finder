@@ -1,46 +1,45 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import CaseListPage from '../../src/app/cases/page';
+import { PrismaClient } from '@prisma/client';
+import CaseList from '../../src/components/CaseList';
 
-describe('Case List UI - Read Back Saved Cases', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+const prisma = new PrismaClient();
+
+describe('Case list UI', () => {
+  beforeEach(async () => {
+    await prisma.case.deleteMany({});
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  afterEach(async () => {
+    await prisma.$disconnect();
   });
 
-  it('displays case that was saved via API', async () => {
-    const mockCases = [
-      { id: '1', identifyingTerms: 'John Doe', createdAt: new Date().toISOString() },
-      { id: '2', identifyingTerms: 'Jane Smith', createdAt: new Date().toISOString() },
-    ];
+  it('should fetch and display persisted cases from the GET /api/cases endpoint', async () => {
+    const terms1 = `list-ui-1-${Date.now()}`;
+    const terms2 = `list-ui-2-${Date.now()}`;
+    await prisma.case.create({ data: { identifyingTerms: terms1 } });
+    await prisma.case.create({ data: { identifyingTerms: terms2 } });
 
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => mockCases,
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    render(<CaseListPage />);
+    render(<CaseList />);
 
     await waitFor(() => {
-      expect(screen.getByText('John Doe')).toBeInTheDocument();
-    });
+      expect(screen.getByText(terms1)).toBeDefined();
+      expect(screen.getByText(terms2)).toBeDefined();
+    }, { timeout: 5000 });
   });
 
-  it('shows empty state when no cases exist', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [],
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    render(<CaseListPage />);
+  it('should display newly saved case when created', async () => {
+    const terms = `list-ui-new-${Date.now()}`;
+    render(<CaseList />);
 
     await waitFor(() => {
-      expect(screen.getByText(/no cases found/i)).toBeInTheDocument();
-    });
+      expect(screen.getByText(/no cases/i)).toBeDefined();
+    }, { timeout: 5000 });
+
+    await prisma.case.create({ data: { identifyingTerms: terms } });
+
+    await waitFor(() => {
+      expect(screen.getByText(terms)).toBeDefined();
+    }, { timeout: 5000 });
   });
 });
