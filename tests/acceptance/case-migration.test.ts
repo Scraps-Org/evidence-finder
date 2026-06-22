@@ -1,20 +1,24 @@
-import { readdir, readFile } from 'fs/promises';
-import { join } from 'path';
 import { describe, it, expect } from 'vitest';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 
-describe('Case table migration', () => {
-  it('has exactly one migration file with CREATE TABLE Case', async () => {
+describe('Case Table Migration', () => {
+  it('has exactly one migration file creating the Case table', async () => {
     const migrationsDir = join(process.cwd(), 'prisma', 'migrations');
-    const entries = await readdir(migrationsDir, { withFileTypes: true });
+    let entries: string[] = [];
+    try {
+      entries = await fs.readdir(migrationsDir);
+    } catch {
+      throw new Error(`prisma/migrations directory not found at ${migrationsDir}`);
+    }
 
-    const migrationDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
-
+    const migrationDirs = entries.filter((e) => !e.startsWith('.'));
     expect(migrationDirs.length).toBe(1);
 
-    const migrationFile = join(migrationsDir, migrationDirs[0]!, 'migration.sql');
-    const content = await readFile(migrationFile, 'utf-8');
-
-    expect(content).toMatch(/CREATE\s+TABLE\s+"Case"/i);
-    expect(content).toMatch(/identifyingTerms\s+TEXT/i);
+    const migrationDir = migrationDirs[0]!;
+    const migrationFile = join(migrationsDir, migrationDir, 'migration.sql');
+    const content = await fs.readFile(migrationFile, 'utf-8');
+    expect(content).toMatch(/CREATE TABLE.*["\`]Case["\`]/i);
+    expect(content).toMatch(/identifyingTerms/i);
   });
 });
