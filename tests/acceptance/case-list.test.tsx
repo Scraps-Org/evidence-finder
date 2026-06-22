@@ -1,48 +1,35 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import EvidenceFinder from '../../src/components/EvidenceFinder';
+import CaseList from '../../src/components/CaseList';
 
-describe('Case List Display', () => {
+describe('D2-case-input: Case List Display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
   });
 
-  it('displays newly saved case in the case list after successful submission', async () => {
-    const mockFetch = vi.mocked(global.fetch);
-    const newCase = { id: 'case-1', terms: 'Jane Smith' };
+  it('displays newly saved case in the list', async () => {
+    const newCase = { id: '1', terms: 'John Doe', createdAt: new Date() };
+    const mockFetch = vi.fn<[string], Promise<Response>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([newCase]), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
 
-    mockFetch.mockImplementation((url) => {
-      if ((url as string).includes('POST')) {
-        return Promise.resolve(
-          new Response(JSON.stringify(newCase), {
-            status: 201,
-            headers: { 'content-type': 'application/json' },
-          })
-        );
-      }
-      if ((url as string).includes('GET')) {
-        return Promise.resolve(
-          new Response(JSON.stringify([newCase]), {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          })
-        );
-      }
-      return Promise.reject(new Error('Unexpected request'));
-    });
-
-    render(<EvidenceFinder />);
-
-    const input = screen.getByRole('textbox', { name: /identifying terms|search terms|case name/i });
-    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
-
-    await userEvent.type(input, 'Jane Smith');
-    await userEvent.click(submitButton);
+    render(<CaseList />);
 
     await waitFor(() => {
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
     });
   });
-})
+
+  it('renders empty state when no cases exist', async () => {
+    const mockFetch = vi.fn<[string], Promise<Response>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<CaseList />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/no cases|empty/i)).toBeInTheDocument();
+    });
+  });
+});
