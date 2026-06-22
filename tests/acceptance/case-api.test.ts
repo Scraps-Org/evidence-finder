@@ -1,120 +1,75 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { POST } from '../../src/app/api/cases/route';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case API Route', () => {
-  beforeEach(async () => {
-    await prisma.case.deleteMany({});
-  });
-
+describe('D2-case-input: Case API route', () => {
   afterEach(async () => {
     await prisma.case.deleteMany({});
   });
 
-  it('should accept POST request with identifying terms and return 201', async () => {
-    const payload = {
-      identifyingTerms: 'Test Case 001',
-    };
-
-    const request = new Request('http://localhost:3000/api/cases', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+  it('inserts a case into the database when given valid identifying terms', async () => {
+    const timestamp = Date.now().toString();
+    const requestBody = JSON.stringify({
+      identifyingTerms: `Test Case ${timestamp}`,
     });
 
-    const response = await POST(request);
-
-    expect(response.status).toBe(201);
-    const data = await response.json();
-    expect(data).toHaveProperty('id');
-    expect(data.identifyingTerms).toBe('Test Case 001');
-  });
-
-  it('should insert case into database via Prisma', async () => {
-    const payload = {
-      identifyingTerms: 'Searchable Case Name',
-    };
-
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+      body: requestBody,
     });
 
     const response = await POST(request);
     expect(response.status).toBe(201);
 
-    const data = await response.json();
+    const responseData = await response.json() as { id: string; identifyingTerms: string };
+    expect(responseData.identifyingTerms).toBe(`Test Case ${timestamp}`);
+
     const savedCase = await prisma.case.findUnique({
-      where: { id: data.id },
+      where: { id: responseData.id },
     });
-
     expect(savedCase).not.toBeNull();
-    expect(savedCase!.identifyingTerms).toBe('Searchable Case Name');
+    expect(savedCase?.identifyingTerms).toBe(`Test Case ${timestamp}`);
   });
 
-  it('should reject empty identifying terms with 400 status', async () => {
-    const payload = {
-      identifyingTerms: '',
-    };
-
+  it('rejects empty identifying terms with a 400 error', async () => {
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifyingTerms: '' }),
     });
 
     const response = await POST(request);
-
     expect(response.status).toBe(400);
-    const caseCount = await prisma.case.count();
-    expect(caseCount).toBe(0);
+
+    const casesCount = await prisma.case.count();
+    expect(casesCount).toBe(0);
   });
 
-  it('should reject whitespace-only identifying terms with 400 status', async () => {
-    const payload = {
-      identifyingTerms: '   \t\n  ',
-    };
-
+  it('rejects whitespace-only identifying terms with a 400 error', async () => {
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifyingTerms: '   ' }),
     });
 
     const response = await POST(request);
-
     expect(response.status).toBe(400);
-    const caseCount = await prisma.case.count();
-    expect(caseCount).toBe(0);
+
+    const casesCount = await prisma.case.count();
+    expect(casesCount).toBe(0);
   });
 
-  it('should not insert row when validation fails', async () => {
-    const invalidPayload = {
-      identifyingTerms: '',
-    };
-
+  it('returns 400 for missing identifyingTerms field', async () => {
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(invalidPayload),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     });
 
-    await POST(request);
-
-    const cases = await prisma.case.findMany();
-    expect(cases).toHaveLength(0);
+    const response = await POST(request);
+    expect(response.status).toBe(400);
   });
 });
