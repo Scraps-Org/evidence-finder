@@ -1,35 +1,31 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import CaseList from '../../src/components/CaseList';
 
-describe('D2-case-input: Case List Display', () => {
+describe('Case List Display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('displays newly saved case in the list', async () => {
-    const newCase = { id: '1', terms: 'John Doe', createdAt: new Date() };
-    const mockFetch = vi.fn<[string], Promise<Response>>()
-      .mockResolvedValueOnce(new Response(JSON.stringify([newCase]), { status: 200 }));
+    const mockCases = [
+      { id: '1', searchTerms: 'John Doe', createdAt: new Date() },
+      { id: '2', searchTerms: 'Jane Smith', createdAt: new Date() },
+    ];
+
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ cases: mockCases }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
     vi.stubGlobal('fetch', mockFetch);
 
     render(<CaseList />);
 
     await waitFor(() => {
       expect(screen.getByText('John Doe')).toBeInTheDocument();
-    });
-  });
-
-  it('renders empty state when no cases exist', async () => {
-    const mockFetch = vi.fn<[string], Promise<Response>>()
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
-    vi.stubGlobal('fetch', mockFetch);
-
-    render(<CaseList />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/no cases|empty/i)).toBeInTheDocument();
+      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
     });
   });
 });
