@@ -1,42 +1,54 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "29aca32a035e85ecc9503ccdf6e819491858c39e"
+      "0991c645ceb2ab15d5092780caffe302d6602270",
+      "f9cfc375781d60178c93354985e45be1ee3a898d",
+      "68b29a6a49184278983f8d7c1a076db74ab6d6a2"
     ]
   },
-  "base_ref": "47b0fe0d64ca8801c1ff4e6b58c539ad170d9cc5",
-  "code_integration_sha": "4f0ce389e1b3f78dcca18a04db7da7ec0eb96824",
+  "base_ref": "c3221c44b2eeeef1dc3642a5349edb718c02da45",
+  "code_integration_sha": "82f0e45bb5d87c14e57c975cd7122c856404b9da",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-a5b6ec5df1d8",
-  "dispatch_id": "eval-evidence-finder-a5b6ec5df1d8-a9",
+  "correlation_id": "eval-evidence-finder-b7603b903386",
+  "dispatch_id": "eval-evidence-finder-b7603b903386",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-20T18:41:41.556036Z",
-  "goal_doc_sha": "a5b6ec5df1d8",
-  "goal_id": "evidence-finder-a5b6ec5df1d8",
-  "integration_branch": "scraps/goal/evidence-finder-a5b6ec5df1d8",
+  "generated_at": "2026-06-22T18:33:10.607708Z",
+  "goal_doc_sha": "b7603b903386",
+  "goal_id": "evidence-finder-b7603b903386",
+  "integration_branch": "scraps/goal/evidence-finder-b7603b903386",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "84590594d56f4389d4f504870940a61358b6c87d5fce5b597dcc880250afb42b"
+    "sha256": "3f0de6cc0a3744ab2d2ae141358eed9f39fe408155f8dc002de027b4b5d1929c"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "evidence-finder-landing",
+        "name": "prisma-case-model",
+        "status": "green",
+        "tier": "extended"
+      },
+      {
+        "name": "case-api-route",
+        "status": "green",
+        "tier": "extended"
+      },
+      {
+        "name": "case-creation-form",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 1,
+    "merged_task_count": 3,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D1-scaffold",
-      "how_measured": "none",
-      "observed": "not_engine_measurable"
+      "criterion": "D2-case-input",
+      "how_measured": "deterministic_verification",
+      "observed": "verification_evidence (tasks: prisma-case-model, case-api-route, case-creation-form)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -60,17 +72,88 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/acceptance/landing-page.test.tsx",
+          "command": "pnpm exec prisma generate",
           "exit_code": 0,
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/Welcome.test.tsx",
+          "command": "pnpm exec prisma migrate deploy",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/case-migration.test.ts",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/case-persistence.test.ts",
           "exit_code": 0,
           "status": "passed"
         },
         {
           "command": "pnpm exec tsc --noEmit",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm run typecheck",
+          "exit_code": 0,
+          "status": "passed"
+        }
+      ],
+      "log_ref": "event:task.verification_evidence:prisma-case-model",
+      "name": "prisma-case-model",
+      "status": "green",
+      "tier": "extended"
+    },
+    {
+      "checks": [
+        {
+          "command": "pnpm install --frozen-lockfile",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma generate",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma migrate deploy",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/case-api-route.test.ts",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec tsc --noEmit",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm run typecheck",
+          "exit_code": 0,
+          "status": "passed"
+        }
+      ],
+      "log_ref": "event:task.verification_evidence:case-api-route",
+      "name": "case-api-route",
+      "status": "green",
+      "tier": "extended"
+    },
+    {
+      "checks": [
+        {
+          "command": "pnpm install --frozen-lockfile",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/case-creation-form.test.tsx",
           "exit_code": 0,
           "status": "passed"
         },
@@ -85,8 +168,8 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:evidence-finder-landing",
-      "name": "evidence-finder-landing",
+      "log_ref": "event:task.verification_evidence:case-creation-form",
+      "name": "case-creation-form",
       "status": "green",
       "tier": "extended"
     }
