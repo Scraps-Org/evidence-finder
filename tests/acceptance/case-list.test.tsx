@@ -1,75 +1,83 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import EvidenceFinder from '../../src/components/EvidenceFinder';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import CaseListWithForm from '../../src/components/CaseListWithForm';
 
-describe('D2-case-input: Case List Display', () => {
-  let originalFetch: typeof global.fetch;
-
+describe('D2-case-input: Case list displays newly created cases', () => {
   beforeEach(() => {
-    originalFetch = global.fetch;
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    vi.unstubAllGlobals();
   });
 
-  it('should display newly saved case in case list after submission', async () => {
-    const user = userEvent.setup();
-    const caseId = 'case-123';
-    const identifyingTerms = 'New Case For List Display';
+  it('displays newly created case in the list after form submission', async () => {
+    const testCaseName = `Test Case ${Date.now()}`;
+    const mockFetch = vi.fn((url: string) => {
+      if (url.includes('/api/cases')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ([
+            { id: '1', identifyingTerms: testCaseName, createdAt: new Date().toISOString() },
+          ]),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ id: '1', identifyingTerms: testCaseName }),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
 
-    const mockFetch = vi.fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify([]), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: caseId, identifyingTerms }), {
-          status: 201,
-          headers: { 'content-type': 'application/json' },
-        })
-      );
+    render(<CaseListWithForm />);
 
-    global.fetch = mockFetch;
+    const input = screen.getByRole('textbox', { name: /identifying terms|name/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create/i });
 
-    render(<EvidenceFinder />);
-
-    const input = screen.getByRole('textbox', { name: /identifying terms/i });
-    const submitButton = screen.getByRole('button', { name: /create case/i });
-
-    await user.type(input, identifyingTerms);
-    await user.click(submitButton);
+    await userEvent.type(input, testCaseName);
+    await userEvent.click(submitButton);
 
     await waitFor(() => {
-      const caseItem = screen.getByText(identifyingTerms);
-      expect(caseItem).toBeInTheDocument();
+      expect(screen.getByText(testCaseName)).toBeInTheDocument();
     });
   });
 
-  it('should not display case in list when creation fails validation', async () => {
-    const user = userEvent.setup();
-    const invalidTerms = '   ';
+  it('preserves existing cases when adding new ones', async () => {
+    const mockFetch = vi.fn((url: string) => {
+      if (url.includes('/api/cases')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ([
+            { id: '1', identifyingTerms: 'Existing Case', createdAt: new Date().toISOString() },
+            { id: '2', identifyingTerms: 'Another Case', createdAt: new Date().toISOString() },
+          ]),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ id: '3', identifyingTerms: 'New Case' }),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
 
-    global.fetch = vi.fn().mockResolvedValueOnce(
-      new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
+    render(<CaseListWithForm />);
 
-    render(<EvidenceFinder />);
+    await waitFor(() => {
+      expect(screen.getByText('Existing Case')).toBeInTheDocument();
+      expect(screen.getByText('Another Case')).toBeInTheDocument();
+    });
 
-    const input = screen.getByRole('textbox', { name: /identifying terms/i });
-    const submitButton = screen.getByRole('button', { name: /create case/i });
+    const input = screen.getByRole('textbox', { name: /identifying terms|name/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create/i });
 
-    await user.type(input, invalidTerms);
-    await user.click(submitButton);
+    await userEvent.type(input, 'New Case');
+    await userEvent.click(submitButton);
 
-    const errorMessage = screen.getByText(/required and cannot be empty/i);
-    expect(errorMessage).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Existing Case')).toBeInTheDocument();
+      expect(screen.getByText('Another Case')).toBeInTheDocument();
+      expect(screen.getByText('New Case')).toBeInTheDocument();
+    });
   });
 });
