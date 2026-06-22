@@ -1,67 +1,85 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
+import { POST } from '../../src/app/api/cases/route';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case API Route', () => {
+describe('Cases API Route', () => {
+  const testId = `test-${Date.now()}`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   afterEach(async () => {
-    await prisma.case.deleteMany({});
-  });
-
-  it('inserts a case row into the database when given valid identifying terms', async () => {
-    const { POST } = await import('../../src/app/api/cases/route');
-
-    const testTerms = `test-case-${Date.now()}`;
-    const response = await POST(
-      new Request('http://localhost:3000/api/cases', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identifyingTerms: testTerms }),
-      }) as Parameters<typeof POST>[0]
-    );
-
-    expect(response.status).toBe(200);
-    const data = (await response.json()) as { id: string; identifyingTerms: string };
-    expect(data.identifyingTerms).toBe(testTerms);
-
-    const saved = await prisma.case.findUnique({
-      where: { id: data.id },
+    await prisma.case.deleteMany({
+      where: { searchTerm: { contains: testId } },
     });
-    expect(saved).not.toBeNull();
-    expect(saved?.identifyingTerms).toBe(testTerms);
   });
 
-  it('rejects empty identifying terms and returns error', async () => {
-    const { POST } = await import('../../src/app/api/cases/route');
-
-    const response = await POST(
-      new Request('http://localhost:3000/api/cases', {
+  describe('D2-case-input: API route inserts case into Postgres via Prisma', () => {
+    it('accepts valid identifying terms and inserts into Case table', async () => {
+      const searchTerm = `Valid Case ${testId}`;
+      const request = new Request('http://localhost:3000/api/cases', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identifyingTerms: '' }),
-      }) as Parameters<typeof POST>[0]
-    );
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ searchTerm }),
+      });
 
-    expect(response.status).toBe(400);
+      const response = await POST(request);
+      expect(response.status).toBe(201);
 
-    const count = await prisma.case.count();
-    expect(count).toBe(0);
+      const data = (await response.json()) as { id: string; searchTerm: string };
+      expect(data).toHaveProperty('id');
+      expect(data.searchTerm).toBe(searchTerm);
+
+      const savedCase = await prisma.case.findUnique({
+        where: { id: data.id },
+      });
+      expect(savedCase).not.toBeNull();
+      expect(savedCase?.searchTerm).toBe(searchTerm);
+    });
+
+    it('rejects empty string input and returns error', async () => {
+      const request = new Request('http://localhost:3000/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ searchTerm: '' }),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+
+      const data = (await response.json()) as { error: string };
+      expect(data).toHaveProperty('error');
+
+      const count = await prisma.case.count({
+        where: { searchTerm: '' },
+      });
+      expect(count).toBe(0);
+    });
+
+    it('rejects whitespace-only input and returns error', async () => {
+      const request = new Request('http://localhost:3000/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ searchTerm: '   ' }),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+
+      const data = (await response.json()) as { error: string };
+      expect(data).toHaveProperty('error');
+
+      const count = await prisma.case.count({
+        where: { searchTerm: '   ' },
+      });
+      expect(count).toBe(0);
+    });
   });
 
-  it('rejects whitespace-only identifying terms and returns error', async () => {
-    const { POST } = await import('../../src/app/api/cases/route');
-
-    const response = await POST(
-      new Request('http://localhost:3000/api/cases', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identifyingTerms: '   ' }),
-      }) as Parameters<typeof POST>[0]
-    );
-
-    expect(response.status).toBe(400);
-
-    const count = await prisma.case.count();
-    expect(count).toBe(0);
+  afterAll(async () => {
+    await prisma.$disconnect();
   });
 });
