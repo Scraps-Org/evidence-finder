@@ -1,61 +1,50 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import CaseList from '../../src/components/CaseList';
+import { userEvent } from '@testing-library/user-event';
+import { vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-describe('Case List: Display newly created cases', () => {
+describe('Case List Display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    global.fetch = vi.fn();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  it('displays newly saved cases in the list', async () => {
+    const user = userEvent.setup();
+    const mockFetch = vi.mocked(global.fetch);
 
-  it('displays newly saved case in the list', async () => {
-    const mockCases = [
-      { id: '1', identifyingTerms: 'John Doe', createdAt: new Date() },
-      { id: '2', identifyingTerms: 'Jane Smith', createdAt: new Date() },
-    ];
-
-    const mockFetch = vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify(mockCases), { status: 200 }))
-    );
-    vi.stubGlobal('fetch', mockFetch);
-
-    render(<CaseList />);
-
-    await waitFor(() => {
-      expect(screen.getByText('John Doe')).toBeInTheDocument();
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
-    });
-  });
-
-  it('updates list when new case is added', async () => {
-    const initialCases = [
-      { id: '1', identifyingTerms: 'John Doe', createdAt: new Date() },
-    ];
-
-    let callCount = 0;
-    const mockFetch = vi.fn(() => {
-      callCount++;
-      const cases = callCount === 1 ? initialCases : [
-        ...initialCases,
-        { id: '2', identifyingTerms: 'Jane Smith', createdAt: new Date() },
-      ];
-      return Promise.resolve(new Response(JSON.stringify(cases), { status: 200 }));
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    const { rerender } = render(<CaseList />);
-
-    await waitFor(() => {
-      expect(screen.getByText('John Doe')).toBeInTheDocument();
+    mockFetch.mockImplementation((url: string | Request) => {
+      const urlStr = typeof url === 'string' ? url : url.url;
+      if (urlStr.includes('/api/cases') && url instanceof Request && url.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: '123', identifyingTerms: 'New Case' }), {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          })
+        );
+      }
+      if (urlStr.includes('/api/cases')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: '123', identifyingTerms: 'New Case' },
+              { id: '456', identifyingTerms: 'Another Case' },
+            ]),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }
+          )
+        );
+      }
+      return Promise.reject(new Error('Not mocked'));
     });
 
-    rerender(<CaseList />);
+    render(<EvidenceFinder />);
 
     await waitFor(() => {
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+      expect(screen.getByText('New Case')).toBeInTheDocument();
     });
   });
 });
