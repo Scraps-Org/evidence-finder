@@ -7,7 +7,7 @@ export default function CaseCreationForm({ onCaseCreated }: { onCaseCreated: () 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (value.trim() === '') {
       return;
     }
@@ -34,11 +34,7 @@ export default function CaseCreationForm({ onCaseCreated }: { onCaseCreated: () 
   return (
     <form onSubmit={handleSubmit}>
       <label htmlFor="identifying-terms">Identifying terms</label>
-      <input
-        id="identifying-terms"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-      />
+      <input id="identifying-terms" value={value} onChange={(e) => setValue(e.target.value)} />
       <button type="submit">Create case</button>
     </form>
   );

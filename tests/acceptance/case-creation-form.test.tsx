@@ -33,7 +33,7 @@ describe('Case Creation Form - UI', () => {
       new Response(JSON.stringify({ id: '1', identifyingTerms: 'Jane Smith' }), {
         status: 201,
         headers: { 'content-type': 'application/json' },
-      })
+      }),
     );
     vi.stubGlobal('fetch', mockFetch);
 
@@ -51,7 +51,7 @@ describe('Case Creation Form - UI', () => {
           method: 'POST',
           body: JSON.stringify({ identifyingTerms: 'Jane Smith' }),
           headers: expect.objectContaining({ 'content-type': 'application/json' }),
-        })
+        }),
       );
     });
 

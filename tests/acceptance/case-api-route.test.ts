@@ -20,7 +20,7 @@ describe('POST /api/cases - Case Creation API Route', () => {
 
     const response = await POST(request);
     expect(response.status).toBe(201);
-    const data = await response.json() as { id: string; identifyingTerms: string };
+    const data = (await response.json()) as { id: string; identifyingTerms: string };
     expect(data.identifyingTerms).toBe(identifyingTerms);
   });
 

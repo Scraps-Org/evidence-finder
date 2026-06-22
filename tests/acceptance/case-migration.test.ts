@@ -5,8 +5,8 @@ import { join } from 'path';
 describe('Case Migration - Database Schema', () => {
   it('creates exactly one migration file containing Case table DDL', () => {
     const migrationsDir = join(process.cwd(), 'prisma', 'migrations');
-    const migrationDirs = readdirSync(migrationsDir).filter((f) =>
-      f !== 'migration_lock.toml' && !f.startsWith('.')
+    const migrationDirs = readdirSync(migrationsDir).filter(
+      (f) => f !== 'migration_lock.toml' && !f.startsWith('.'),
     );
 
     const caseTableMigrations = migrationDirs.filter((dir) => {
@@ -21,11 +21,7 @@ describe('Case Migration - Database Schema', () => {
 
     expect(caseTableMigrations.length).toBe(1);
 
-    const migrationFile = join(
-      migrationsDir,
-      caseTableMigrations[0],
-      'migration.sql'
-    );
+    const migrationFile = join(migrationsDir, caseTableMigrations[0], 'migration.sql');
     const content = readFileSync(migrationFile, 'utf-8');
     expect(content).toMatch(/CREATE TABLE.*"Case"/i);
     expect(content).toContain('identifyingTerms');
