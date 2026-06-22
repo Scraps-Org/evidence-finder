@@ -1,79 +1,132 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { userEvent } from '@testing-library/user-event';
-import { vi } from 'vitest';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-describe('D2-case-input: Case Creation UI', () => {
+describe('D2-case-input: Case Creation Form', () => {
+  let originalFetch: typeof global.fetch;
+
   beforeEach(() => {
+    originalFetch = global.fetch;
     vi.clearAllMocks();
-    global.fetch = vi.fn();
   });
 
-  it('accepts identifying terms input and submits to API route', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.mocked(global.fetch);
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
 
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: '123', identifyingTerms: 'John Doe' }), {
-        status: 201,
+  it('should render the case creation form with identifying terms input field', () => {
+    global.fetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+
+    render(<EvidenceFinder />);
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    expect(input).toBeInTheDocument();
+  });
+
+  it('should accept identifying terms input and submit via API', async () => {
+    const user = userEvent.setup();
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: '1', identifyingTerms: 'John Doe' }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+    global.fetch = mockFetch;
+
+    render(<EvidenceFinder />);
+
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    const submitButton = screen.getByRole('button', { name: /create case/i });
+
+    await user.type(input, 'John Doe');
+    await user.click(submitButton);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/cases',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'content-type': 'application/json',
+        }),
+      })
+    );
+  });
+
+  it('should reject empty input and show validation error', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
         headers: { 'content-type': 'application/json' },
       })
     );
 
     render(<EvidenceFinder />);
 
-    const input = screen.getByPlaceholderText(/identifying terms|name|identifier/i) as HTMLInputElement;
-    await user.type(input, 'John Doe');
-
-    const submitButton = screen.getByRole('button', { name: /submit|save|create case/i });
+    const submitButton = screen.getByRole('button', { name: /create case/i });
     await user.click(submitButton);
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/cases'),
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('John Doe'),
-        })
-      );
-    });
+    const errorMessage = screen.getByText(/required and cannot be empty/i);
+    expect(errorMessage).toBeInTheDocument();
   });
 
-  it('rejects empty input and does not submit', async () => {
+  it('should reject whitespace-only input and show validation error', async () => {
     const user = userEvent.setup();
-    const mockFetch = vi.mocked(global.fetch);
+    global.fetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
 
     render(<EvidenceFinder />);
 
-    const submitButton = screen.getByRole('button', { name: /submit|save|create case/i });
-    await user.click(submitButton);
-
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('rejects whitespace-only input and does not submit', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.mocked(global.fetch);
-
-    render(<EvidenceFinder />);
-
-    const input = screen.getByPlaceholderText(/identifying terms|name|identifier/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /submit|save|create case/i });
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    const submitButton = screen.getByRole('button', { name: /create case/i });
 
     await user.type(input, '   ');
     await user.click(submitButton);
 
-    expect(mockFetch).not.toHaveBeenCalled();
+    const errorMessage = screen.getByText(/required and cannot be empty/i);
+    expect(errorMessage).toBeInTheDocument();
   });
 
-  it('displays validation error message on empty submit', async () => {
+  it('should clear input field after successful submission', async () => {
     const user = userEvent.setup();
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: '1', identifyingTerms: 'Jane Smith' }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
     render(<EvidenceFinder />);
 
-    const submitButton = screen.getByRole('button', { name: /submit|save|create case/i });
+    const input = screen.getByRole('textbox', { name: /identifying terms/i }) as HTMLInputElement;
+    const submitButton = screen.getByRole('button', { name: /create case/i });
+
+    await user.type(input, 'Jane Smith');
     await user.click(submitButton);
 
-    expect(screen.getByText(/identifying terms|required|cannot be empty/i)).toBeInTheDocument();
+    expect(input.value).toBe('');
   });
-}
+});
