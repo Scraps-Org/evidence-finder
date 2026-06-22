@@ -1,33 +1,50 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'fs';
-import { join } from 'path';
+import fs from 'fs';
+import path from 'path';
 
-describe('Case Migration - Database Schema', () => {
-  it('creates exactly one migration file containing Case table DDL', () => {
-    const migrationsDir = join(process.cwd(), 'prisma', 'migrations');
-    const migrationDirs = readdirSync(migrationsDir).filter((f) =>
-      f !== 'migration_lock.toml' && !f.startsWith('.')
-    );
+describe('Case migration (prisma/migrations)', () => {
+  it('should have exactly one migration directory under prisma/migrations/', () => {
+    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
+    expect(fs.existsSync(migrationsDir)).toBe(true);
 
-    const caseTableMigrations = migrationDirs.filter((dir) => {
-      const migrationFile = join(migrationsDir, dir, 'migration.sql');
-      try {
-        const content = readFileSync(migrationFile, 'utf-8');
-        return content.includes('CREATE TABLE') && content.includes('Case');
-      } catch {
-        return false;
-      }
+    const migrationDirs = fs.readdirSync(migrationsDir).filter((f) => {
+      const fullPath = path.join(migrationsDir, f);
+      return fs.statSync(fullPath).isDirectory();
     });
 
-    expect(caseTableMigrations.length).toBe(1);
+    expect(migrationDirs).toHaveLength(1);
+  });
 
-    const migrationFile = join(
-      migrationsDir,
-      caseTableMigrations[0],
-      'migration.sql'
+  it('should contain a migration.sql with CREATE TABLE Case DDL', () => {
+    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
+    const migrationDirs = fs.readdirSync(migrationsDir).filter((f) => {
+      const fullPath = path.join(migrationsDir, f);
+      return fs.statSync(fullPath).isDirectory();
+    });
+
+    expect(migrationDirs.length).toBeGreaterThan(0);
+
+    const migrationSql = fs.readFileSync(
+      path.join(migrationsDir, migrationDirs[0]!, 'migration.sql'),
+      'utf-8'
     );
-    const content = readFileSync(migrationFile, 'utf-8');
-    expect(content).toMatch(/CREATE TABLE.*"Case"/i);
-    expect(content).toContain('identifyingTerms');
+
+    expect(migrationSql.toUpperCase()).toContain('CREATE TABLE');
+    expect(migrationSql.toUpperCase()).toContain('"Case"');
+  });
+
+  it('should have identifying_terms column in Case table migration', () => {
+    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
+    const migrationDirs = fs.readdirSync(migrationsDir).filter((f) => {
+      const fullPath = path.join(migrationsDir, f);
+      return fs.statSync(fullPath).isDirectory();
+    });
+
+    const migrationSql = fs.readFileSync(
+      path.join(migrationsDir, migrationDirs[0]!, 'migration.sql'),
+      'utf-8'
+    );
+
+    expect(migrationSql.toLowerCase()).toContain('identifying_terms');
   });
 });
