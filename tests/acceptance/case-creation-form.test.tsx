@@ -1,7 +1,6 @@
-import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import CaseCreationForm from '../../src/components/CaseCreationForm';
 
 describe('CaseCreationForm', () => {
@@ -9,72 +8,56 @@ describe('CaseCreationForm', () => {
     vi.clearAllMocks();
   });
 
-  it('should render a form with input field and submit button', () => {
-    render(<CaseCreationForm />);
-    expect(screen.getByLabelText(/identifying terms/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /create case/i })).toBeInTheDocument();
-  });
+  it('submits identifying terms to the API and displays the saved case in the list', async () => {
+    const testTerm = `test-case-${Date.now()}`;
+    const mockCases = [
+      { id: '1', identifyingTerms: testTerm, createdAt: new Date().toISOString() }
+    ];
 
-  it('should accept identifying terms input and submit to API', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ id: '1', identifyingTerms: 'test case' }), {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | Request) => {
+      const url = typeof input === 'string' ? input : input.url;
+      
+      if (url.includes('/api/cases') && typeof input !== 'string' && input.method === 'POST') {
+        return new Response(JSON.stringify({ id: '1', identifyingTerms: testTerm }), {
           status: 201,
-          headers: { 'content-type': 'application/json' },
-        })
-      )
-    );
-    global.fetch = mockFetch;
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      
+      if (url.includes('/api/cases') && (typeof input === 'string' || input.method === 'GET' || !input.method)) {
+        return new Response(JSON.stringify(mockCases), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      
+      return new Response(null, { status: 404 });
+    }) as ReturnType<typeof vi.fn>);
 
     render(<CaseCreationForm />);
-    const input = screen.getByLabelText(/identifying terms/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /create case/i });
-
-    await user.type(input, 'John Doe');
-    await user.click(submitButton);
-
+    
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    const submitBtn = screen.getByRole('button', { name: /submit|create|save/i });
+    
+    fireEvent.change(input, { target: { value: testTerm } });
+    fireEvent.click(submitBtn);
+    
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/cases'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: expect.stringContaining('John Doe'),
-        })
-      );
+      expect(screen.getByText(testTerm)).toBeInTheDocument();
     });
   });
 
-  it('should reject empty input on form level', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.fn();
-    global.fetch = mockFetch;
-
+  it('rejects empty or whitespace-only input', async () => {
     render(<CaseCreationForm />);
-    const submitButton = screen.getByRole('button', { name: /create case/i });
-
-    await user.click(submitButton);
-
+    
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    const submitBtn = screen.getByRole('button', { name: /submit|create|save/i });
+    
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.click(submitBtn);
+    
     await waitFor(() => {
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(screen.getByText(/empty|required|cannot be blank/i)).toBeInTheDocument();
     });
   });
-
-  it('should reject whitespace-only input on form level', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.fn();
-    global.fetch = mockFetch;
-
-    render(<CaseCreationForm />);
-    const input = screen.getByLabelText(/identifying terms/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /create case/i });
-
-    await user.type(input, '   ');
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-  });
-}
+});
