@@ -1,74 +1,88 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { POST } from '../../src/app/api/cases/route';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { POST } from '../../src/app/api/cases/route';
 
 const prisma = new PrismaClient();
 
-describe('케이스 API 라우트', () => {
-  afterEach(async () => {
-    await prisma.case.deleteMany({
-      where: {
-        identifyingTerms: {
-          startsWith: 'test-',
-        },
-      },
-    });
+describe('Case API Route [D2-case-input]', () => {
+  const testTimestamp = Date.now().toString();
+
+  beforeEach(async () => {
+    await prisma.case.deleteMany();
   });
 
-  it('유효한 식별 검색어를 받으면 Prisma를 통해 Case 테이블에 행을 삽입한다', async () => {
-    const identifyingTerms = `test-case-${Date.now()}`;
-    const request = new Request('http://localhost:3000/api/cases', {
+  afterEach(async () => {
+    await prisma.case.deleteMany();
+  });
+
+  it('[Criterion 2] should insert case into database on valid request', async () => {
+    const req = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifyingTerms }),
+      body: JSON.stringify({ identifyingTerms: `Test Case ${testTimestamp}` })
     });
 
-    const response = await POST(request);
-    expect(response.status).toBe(201);
+    const res = await POST(req);
+    expect(res.status).toBe(201);
 
-    const data = await response.json() as { id: string; identifyingTerms: string };
-    expect(data.id).toBeDefined();
-    expect(data.identifyingTerms).toBe(identifyingTerms);
+    const data = await res.json();
+    expect(data).toHaveProperty('id');
+    expect(data.identifyingTerms).toBe(`Test Case ${testTimestamp}`);
 
     const savedCase = await prisma.case.findUnique({
-      where: { id: data.id },
+      where: { id: data.id }
     });
+
     expect(savedCase).toBeDefined();
-    expect(savedCase!.identifyingTerms).toBe(identifyingTerms);
+    expect(savedCase?.identifyingTerms).toBe(`Test Case ${testTimestamp}`);
   });
 
-  it('빈 식별 검색어를 받으면 400 오류를 반환하고 DB에 행을 삽입하지 않는다', async () => {
-    const request = new Request('http://localhost:3000/api/cases', {
+  it('[Criterion 5c] should reject empty string and not insert row', async () => {
+    const req = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifyingTerms: '' }),
+      body: JSON.stringify({ identifyingTerms: '' })
     });
 
-    const response = await POST(request);
-    expect(response.status).toBe(400);
+    const res = await POST(req);
+    expect(res.status).toBe(400);
 
-    const data = await response.json() as { error: string };
-    expect(data.error).toBeDefined();
-  });
+    const data = await res.json();
+    expect(data).toHaveProperty('error');
+    expect(data.error).toMatch(/cannot be empty|required|invalid/i);
 
-  it('공백만으로 구성된 식별 검색어를 받으면 400 오류를 반환하고 DB에 행을 삽입하지 않는다', async () => {
-    const request = new Request('http://localhost:3000/api/cases', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifyingTerms: '   ' }),
-    });
-
-    const response = await POST(request);
-    expect(response.status).toBe(400);
-
-    const data = await response.json() as { error: string };
-    expect(data.error).toBeDefined();
-
-    const caseCount = await prisma.case.count({
-      where: {
-        identifyingTerms: '   ',
-      },
-    });
+    const caseCount = await prisma.case.count();
     expect(caseCount).toBe(0);
   });
-});
+
+  it('[Criterion 5d] should reject whitespace-only input and not insert row', async () => {
+    const req = new Request('http://localhost:3000/api/cases', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ identifyingTerms: '   \t\n  ' })
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+
+    const data = await res.json();
+    expect(data).toHaveProperty('error');
+
+    const caseCount = await prisma.case.count();
+    expect(caseCount).toBe(0);
+  });
+
+  it('should handle missing identifyingTerms field', async () => {
+    const req = new Request('http://localhost:3000/api/cases', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+
+    const caseCount = await prisma.case.count();
+    expect(caseCount).toBe(0);
+  });
+}
