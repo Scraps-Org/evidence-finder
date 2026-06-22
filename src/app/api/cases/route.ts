@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db';
 
 export async function POST(req: Request) {
   const { terms } = await req.json();
-  if (!terms || terms.trim().length === 0) {
-    return NextResponse.json({ error: 'Terms required' }, { status: 400 });
+  if (!terms || !terms.trim()) {
+    return NextResponse.json({ error: 'Terms are required' }, { status: 400 });
   }
-  const caseItem = await prisma.case.create({ data: { terms } });
+  const caseItem = await prisma.case.create({
+    data: { terms: terms.trim() },
+  });
   return NextResponse.json(caseItem, { status: 201 });
 }
 
