@@ -1,50 +1,75 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { userEvent } from '@testing-library/user-event';
-import { vi } from 'vitest';
-import { describe, it, expect, beforeEach } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-describe('Case List Display', () => {
+describe('D2-case-input: Case List Display', () => {
+  let originalFetch: typeof global.fetch;
+
   beforeEach(() => {
+    originalFetch = global.fetch;
     vi.clearAllMocks();
-    global.fetch = vi.fn();
   });
 
-  it('displays newly saved cases in the list', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.mocked(global.fetch);
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
 
-    mockFetch.mockImplementation((url: string | Request) => {
-      const urlStr = typeof url === 'string' ? url : url.url;
-      if (urlStr.includes('/api/cases') && url instanceof Request && url.method === 'POST') {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '123', identifyingTerms: 'New Case' }), {
-            status: 201,
-            headers: { 'content-type': 'application/json' },
-          })
-        );
-      }
-      if (urlStr.includes('/api/cases')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              { id: '123', identifyingTerms: 'New Case' },
-              { id: '456', identifyingTerms: 'Another Case' },
-            ]),
-            {
-              status: 200,
-              headers: { 'content-type': 'application/json' },
-            }
-          )
-        );
-      }
-      return Promise.reject(new Error('Not mocked'));
-    });
+  it('should display newly saved case in case list after submission', async () => {
+    const user = userEvent.setup();
+    const caseId = 'case-123';
+    const identifyingTerms = 'New Case For List Display';
+
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: caseId, identifyingTerms }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    global.fetch = mockFetch;
 
     render(<EvidenceFinder />);
 
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    const submitButton = screen.getByRole('button', { name: /create case/i });
+
+    await user.type(input, identifyingTerms);
+    await user.click(submitButton);
+
     await waitFor(() => {
-      expect(screen.getByText('New Case')).toBeInTheDocument();
+      const caseItem = screen.getByText(identifyingTerms);
+      expect(caseItem).toBeInTheDocument();
     });
+  });
+
+  it('should not display case in list when creation fails validation', async () => {
+    const user = userEvent.setup();
+    const invalidTerms = '   ';
+
+    global.fetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+
+    render(<EvidenceFinder />);
+
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    const submitButton = screen.getByRole('button', { name: /create case/i });
+
+    await user.type(input, invalidTerms);
+    await user.click(submitButton);
+
+    const errorMessage = screen.getByText(/required and cannot be empty/i);
+    expect(errorMessage).toBeInTheDocument();
   });
 });
