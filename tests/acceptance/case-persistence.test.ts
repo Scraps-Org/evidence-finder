@@ -1,64 +1,41 @@
-import { describe, it, expect, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('Case Persistence - Prisma & Vercel Postgres', () => {
-  const createdCaseIds: string[] = [];
-
-  afterEach(async () => {
-    // Clean up test data
-    if (createdCaseIds.length > 0) {
-      await prisma.case.deleteMany({
-        where: {
-          id: { in: createdCaseIds },
-        },
-      });
-      createdCaseIds.length = 0;
-    }
+describe('Case persistence', () => {
+  beforeEach(async () => {
+    await prisma.case.deleteMany({});
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     await prisma.$disconnect();
   });
 
-  it('creates and retrieves a case with identifying terms from the database', async () => {
-    const timestamp = Date.now();
-    const identifyingTerms = `persist-test-${timestamp}`;
-
-    const createdCase = await prisma.case.create({
-      data: {
-        identifyingTerms,
-      },
+  it('should persist a case with identifyingTerms to the database', async () => {
+    const terms = `test-case-${Date.now()}`;
+    const created = await prisma.case.create({
+      data: { identifyingTerms: terms },
     });
-    createdCaseIds.push(createdCase.id);
+    expect(created.identifyingTerms).toBe(terms);
+    expect(created.id).toBeDefined();
 
-    expect(createdCase.id).toBeDefined();
-    expect(createdCase.identifyingTerms).toBe(identifyingTerms);
-
-    const retrievedCase = await prisma.case.findUnique({
-      where: { id: createdCase.id },
+    const found = await prisma.case.findUnique({
+      where: { id: created.id },
     });
-
-    expect(retrievedCase).toBeDefined();
-    expect(retrievedCase!.identifyingTerms).toBe(identifyingTerms);
+    expect(found).not.toBeNull();
+    expect(found?.identifyingTerms).toBe(terms);
   });
 
-  it('lists cases including the newly created case', async () => {
-    const timestamp = Date.now();
-    const identifyingTerms = `persist-test-${timestamp}`;
+  it('should retrieve multiple cases via findMany', async () => {
+    const terms1 = `case-1-${Date.now()}`;
+    const terms2 = `case-2-${Date.now()}`;
+    await prisma.case.create({ data: { identifyingTerms: terms1 } });
+    await prisma.case.create({ data: { identifyingTerms: terms2 } });
 
-    const createdCase = await prisma.case.create({
-      data: {
-        identifyingTerms,
-      },
-    });
-    createdCaseIds.push(createdCase.id);
-
-    const cases = await prisma.case.findMany();
-
-    const foundCase = cases.find((c) => c.id === createdCase.id);
-    expect(foundCase).toBeDefined();
-    expect(foundCase!.identifyingTerms).toBe(identifyingTerms);
+    const cases = await prisma.case.findMany({});
+    expect(cases.length).toBeGreaterThanOrEqual(2);
+    expect(cases.some((c) => c.identifyingTerms === terms1)).toBe(true);
+    expect(cases.some((c) => c.identifyingTerms === terms2)).toBe(true);
   });
 });
