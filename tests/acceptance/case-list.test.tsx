@@ -1,41 +1,47 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-describe('D2-case-input: Case List Integration', () => {
+interface FetchRequestInit extends RequestInit {
+  method?: string;
+}
+
+describe('D2-case-input: Case list display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('displays newly saved case in the case list after successful submission', async () => {
-    const newCaseId = 'case-123';
-    const newCaseTerms = 'Jane Smith';
-
-    const mockFetch = vi.fn(async (url: string) => {
-      if (url.includes('/api/cases')) {
-        return {
-          ok: true,
-          json: async () => ({ id: newCaseId, terms: newCaseTerms }),
-        };
-      }
-      return { ok: false };
-    });
+  it('displays newly saved case in the case list', async () => {
+    const newCaseData = { id: 'case-123', searchTerms: 'Test Case' };
+    const mockFetch = vi.fn<[string, FetchRequestInit], Promise<Response>>()
+      .mockImplementation((url: string) => {
+        if (url.includes('/api/cases')) {
+          return Promise.resolve(
+            new Response(JSON.stringify(newCaseData), {
+              status: 201,
+              headers: { 'content-type': 'application/json' },
+            })
+          );
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ cases: [newCaseData] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        );
+      });
     vi.stubGlobal('fetch', mockFetch);
 
     render(<EvidenceFinder />);
 
-    const input = screen.getByRole('textbox', { name: /identifying terms|search|case/i });
-    const submitButton = screen.getByRole('button', { name: /submit|create|save|search/i });
+    const input = screen.getByRole('textbox', { name: /search terms|identifying|name|identifier/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
 
-    fireEvent.change(input, { target: { value: newCaseTerms } });
+    fireEvent.change(input, { target: { value: 'Test Case' } });
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText(newCaseTerms)).toBeInTheDocument();
+      expect(screen.getByText('Test Case')).toBeInTheDocument();
     });
   });
 });
