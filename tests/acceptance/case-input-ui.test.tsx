@@ -26,15 +26,18 @@ describe('Case Input UI', () => {
       expect(screen.getByText('John Doe')).toBeInTheDocument();
     });
 
-    expect(fetch).toHaveBeenCalledWith('/api/cases', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ terms: 'John Doe' }),
-    }));
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/cases',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ terms: 'John Doe' }),
+      }),
+    );
   });
 
   it('does not submit when input is empty or whitespace', async () => {
     render(<EvidenceFinder />);
-    
+
     const input = screen.getByRole('textbox');
     const submitBtn = screen.getByRole('button', { name: /save case/i });
 

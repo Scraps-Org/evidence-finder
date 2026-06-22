@@ -8,7 +8,7 @@ export function EvidenceFinder() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const trimmedInput = inputValue.trim();
     if (!trimmedInput) return;
 
@@ -23,7 +23,7 @@ export function EvidenceFinder() {
 
       if (response.ok) {
         const newCase = await response.json();
-        setCases(prev => [...prev, newCase]);
+        setCases((prev) => [...prev, newCase]);
         setInputValue('');
       }
     } catch (error) {
