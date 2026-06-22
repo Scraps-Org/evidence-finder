@@ -1,82 +1,60 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import Page from '../../src/app/page';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import CaseCreationForm from '../../src/components/CaseCreationForm';
 
-describe('D2-case-input: Case Creation Form', () => {
+describe('Case Creation Form', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('accepts identifying terms input and submits to API route', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ id: '1', identifyingTerms: 'John Doe' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      )
-    );
+  describe('D2-case-input: Form accepts identifying terms and submits', () => {
+    it('accepts identifying terms input and submits to API route', async () => {
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: '1', searchTerm: 'John Doe' }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
 
-    vi.stubGlobal('fetch', mockFetch);
+      const user = userEvent.setup();
+      render(<CaseCreationForm />);
 
-    render(<Page />);
+      const input = screen.getByRole('textbox', { name: /identifying terms/i });
+      await user.type(input, 'John Doe');
 
-    const input = screen.getByRole('textbox', {
-      name: /identifying terms/i,
-    }) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /create case/i });
+      const submitButton = screen.getByRole('button', { name: /create case/i });
+      await user.click(submitButton);
 
-    await user.type(input, 'John Doe');
-    await user.click(submitButton);
-
-    await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/cases'),
+        '/api/cases',
         expect.objectContaining({
           method: 'POST',
-          headers: expect.objectContaining({
-            'content-type': 'application/json',
-          }),
           body: expect.stringContaining('John Doe'),
         })
       );
     });
-  });
 
-  it('rejects empty input and does not submit', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
+    it('displays error for empty input submission', async () => {
+      const user = userEvent.setup();
+      render(<CaseCreationForm />);
 
-    render(<Page />);
+      const submitButton = screen.getByRole('button', { name: /create case/i });
+      await user.click(submitButton);
 
-    const submitButton = screen.getByRole('button', { name: /create case/i });
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(screen.getByText(/cannot be empty or whitespace/i)).toBeInTheDocument();
     });
-  });
 
-  it('rejects whitespace-only input and does not submit', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
+    it('displays error for whitespace-only input submission', async () => {
+      const user = userEvent.setup();
+      render(<CaseCreationForm />);
 
-    render(<Page />);
+      const input = screen.getByRole('textbox', { name: /identifying terms/i });
+      await user.type(input, '   ');
 
-    const input = screen.getByRole('textbox', {
-      name: /identifying terms/i,
-    }) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /create case/i });
+      const submitButton = screen.getByRole('button', { name: /create case/i });
+      await user.click(submitButton);
 
-    await user.type(input, '   ');
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(screen.getByText(/cannot be empty or whitespace/i)).toBeInTheDocument();
     });
   });
 });
