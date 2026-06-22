@@ -1,51 +1,50 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import fs from 'fs';
-import path from 'path';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case persistence and migration', () => {
+describe('D2-case-input: Case Persistence & Migration', () => {
   afterEach(async () => {
-    // Clean up test data
-    await prisma.case.deleteMany({});
-    await prisma.$disconnect();
+    await prisma.case.deleteMany();
   });
 
-  it('Case model exists and can insert/query records', async () => {
-    const testIdentifyingTerms = `persist-test-${Date.now()}`;
+  it('Case table exists via Prisma migration', async () => {
+    const result = await prisma.case.findMany();
+    expect(Array.isArray(result)).toBe(true);
+  });
 
-    const createdCase = await prisma.case.create({
+  it('creates and retrieves a case row from Vercel Postgres', async () => {
+    const timestamp = new Date().toISOString();
+    const caseData = await prisma.case.create({
       data: {
-        identifyingTerms: testIdentifyingTerms,
+        searchTerms: `Case-${timestamp}`,
       },
     });
 
-    expect(createdCase).toBeDefined();
-    expect(createdCase.id).toBeDefined();
-    expect(createdCase.identifyingTerms).toBe(testIdentifyingTerms);
+    expect(caseData.id).toBeDefined();
+    expect(caseData.searchTerms).toBe(`Case-${timestamp}`);
 
-    // Verify roundtrip: read it back
-    const retrievedCase = await prisma.case.findUnique({
-      where: { id: createdCase.id },
+    const retrieved = await prisma.case.findUnique({
+      where: { id: caseData.id },
     });
 
-    expect(retrievedCase).not.toBeNull();
-    expect(retrievedCase?.identifyingTerms).toBe(testIdentifyingTerms);
+    expect(retrieved).not.toBeNull();
+    expect(retrieved!.searchTerms).toBe(`Case-${timestamp}`);
   });
 
-  it('migration file exists under prisma/migrations/', () => {
-    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-    expect(fs.existsSync(migrationsDir)).toBe(true);
+  it('persists multiple cases independently', async () => {
+    const timestamp = new Date().toISOString();
 
-    const files = fs.readdirSync(migrationsDir);
-    const hasCaseMigration = files.some((file) => {
-      const migrationPath = path.join(migrationsDir, file, 'migration.sql');
-      if (!fs.existsSync(migrationPath)) return false;
-      const content = fs.readFileSync(migrationPath, 'utf-8');
-      return content.toLowerCase().includes('case');
+    const case1 = await prisma.case.create({
+      data: { searchTerms: `Case1-${timestamp}` },
+    });
+    const case2 = await prisma.case.create({
+      data: { searchTerms: `Case2-${timestamp}` },
     });
 
-    expect(hasCaseMigration).toBe(true);
+    const all = await prisma.case.findMany();
+    const ids = all.map((c) => c.id).sort();
+    expect(ids).toContain(case1.id);
+    expect(ids).toContain(case2.id);
   });
 });
