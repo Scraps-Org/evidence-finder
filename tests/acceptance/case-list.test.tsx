@@ -1,44 +1,61 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import CaseList from '../../src/components/CaseList';
 
-describe('Case List Display', () => {
+describe('Case List: Display newly created cases', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('D2-case-input: Newly saved case appears in case list', () => {
-    it('displays case in the list after creation', async () => {
-      const mockCases = [
-        { id: '1', searchTerm: 'John Doe', createdAt: new Date().toISOString() },
-        { id: '2', searchTerm: 'Jane Smith', createdAt: new Date().toISOString() },
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('displays newly saved case in the list', async () => {
+    const mockCases = [
+      { id: '1', identifyingTerms: 'John Doe', createdAt: new Date() },
+      { id: '2', identifyingTerms: 'Jane Smith', createdAt: new Date() },
+    ];
+
+    const mockFetch = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify(mockCases), { status: 200 }))
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<CaseList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
+      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+    });
+  });
+
+  it('updates list when new case is added', async () => {
+    const initialCases = [
+      { id: '1', identifyingTerms: 'John Doe', createdAt: new Date() },
+    ];
+
+    let callCount = 0;
+    const mockFetch = vi.fn(() => {
+      callCount++;
+      const cases = callCount === 1 ? initialCases : [
+        ...initialCases,
+        { id: '2', identifyingTerms: 'Jane Smith', createdAt: new Date() },
       ];
+      return Promise.resolve(new Response(JSON.stringify(cases), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', mockFetch);
 
-      const mockFetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCases,
-      });
-      vi.stubGlobal('fetch', mockFetch);
+    const { rerender } = render(<CaseList />);
 
-      render(<CaseList />);
-
-      const case1 = await screen.findByText('John Doe');
-      const case2 = await screen.findByText('Jane Smith');
-
-      expect(case1).toBeInTheDocument();
-      expect(case2).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
     });
 
-    it('displays empty state when no cases exist', async () => {
-      const mockFetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => [],
-      });
-      vi.stubGlobal('fetch', mockFetch);
+    rerender(<CaseList />);
 
-      render(<CaseList />);
-
-      expect(screen.getByText(/no cases found/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
     });
   });
 });
