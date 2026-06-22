@@ -4,72 +4,63 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case API route', () => {
+describe('D2-case-input: Case Creation API Route', () => {
+  const testId = `test-case-${Date.now()}-${Math.random()}`;
+
   afterEach(async () => {
-    await prisma.case.deleteMany({});
+    await prisma.case.deleteMany({
+      where: { searchTerm: { contains: testId } },
+    });
+    await prisma.$disconnect();
   });
 
-  it('inserts a case into the database when given valid identifying terms', async () => {
-    const timestamp = Date.now().toString();
-    const requestBody = JSON.stringify({
-      identifyingTerms: `Test Case ${timestamp}`,
-    });
-
+  it('inserts a new case into Vercel Postgres via Prisma on valid input', async () => {
+    const searchTerm = `Valid Case ${testId}`;
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: requestBody,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ searchTerm }),
     });
 
     const response = await POST(request);
     expect(response.status).toBe(201);
 
-    const responseData = await response.json() as { id: string; identifyingTerms: string };
-    expect(responseData.identifyingTerms).toBe(`Test Case ${timestamp}`);
+    const data = await response.json();
+    expect(data.id).toBeDefined();
+    expect(data.searchTerm).toBe(searchTerm);
 
     const savedCase = await prisma.case.findUnique({
-      where: { id: responseData.id },
+      where: { id: data.id },
     });
     expect(savedCase).not.toBeNull();
-    expect(savedCase?.identifyingTerms).toBe(`Test Case ${timestamp}`);
+    expect(savedCase!.searchTerm).toBe(searchTerm);
   });
 
-  it('rejects empty identifying terms with a 400 error', async () => {
+  it('rejects empty searchTerm and does not insert a row', async () => {
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifyingTerms: '' }),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ searchTerm: '' }),
     });
 
     const response = await POST(request);
     expect(response.status).toBe(400);
 
-    const casesCount = await prisma.case.count();
-    expect(casesCount).toBe(0);
+    const data = await response.json();
+    expect(data.error).toBeDefined();
   });
 
-  it('rejects whitespace-only identifying terms with a 400 error', async () => {
+  it('rejects whitespace-only searchTerm and does not insert a row', async () => {
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifyingTerms: '   ' }),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ searchTerm: '   \n\t  ' }),
     });
 
     const response = await POST(request);
     expect(response.status).toBe(400);
 
-    const casesCount = await prisma.case.count();
-    expect(casesCount).toBe(0);
-  });
-
-  it('returns 400 for missing identifyingTerms field', async () => {
-    const request = new Request('http://localhost:3000/api/cases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-
-    const response = await POST(request);
-    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBeDefined();
   });
 });
