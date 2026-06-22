@@ -1,42 +1,48 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "29aca32a035e85ecc9503ccdf6e819491858c39e"
+      "84eb7a4e6691c00478ad9e06bfdefb0942aa9e04",
+      "1f5c73ebcecbce15ffc33a37e3e8a47c819ae007"
     ]
   },
-  "base_ref": "47b0fe0d64ca8801c1ff4e6b58c539ad170d9cc5",
-  "code_integration_sha": "4f0ce389e1b3f78dcca18a04db7da7ec0eb96824",
+  "base_ref": "2abdb39009504acc4ea6ffa44476ba98a2a66157",
+  "code_integration_sha": "e42b173c4bc4560249c318e37ddb501051b467ae",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-a5b6ec5df1d8",
-  "dispatch_id": "eval-evidence-finder-a5b6ec5df1d8-a9",
+  "correlation_id": "eval-evidence-finder-2edaafe95c00",
+  "dispatch_id": "eval-evidence-finder-2edaafe95c00-a10",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-20T18:41:41.556036Z",
-  "goal_doc_sha": "a5b6ec5df1d8",
-  "goal_id": "evidence-finder-a5b6ec5df1d8",
-  "integration_branch": "scraps/goal/evidence-finder-a5b6ec5df1d8",
+  "generated_at": "2026-06-22T08:13:50.071530Z",
+  "goal_doc_sha": "2edaafe95c00",
+  "goal_id": "evidence-finder-2edaafe95c00",
+  "integration_branch": "scraps/goal/evidence-finder-2edaafe95c00",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "84590594d56f4389d4f504870940a61358b6c87d5fce5b597dcc880250afb42b"
+    "sha256": "f849d98a8c1b2f76b5e0339da6b81b79dbcfdcce7cb74abd5c0cdf681a12e075"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "evidence-finder-landing",
+        "name": "case-api-prisma",
+        "status": "green",
+        "tier": "extended"
+      },
+      {
+        "name": "case-input-ui",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 1,
+    "merged_task_count": 2,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D1-scaffold",
-      "how_measured": "none",
-      "observed": "not_engine_measurable"
+      "criterion": "D2-case-input",
+      "how_measured": "deterministic_verification",
+      "observed": "verification_evidence (tasks: case-api-prisma, case-input-ui)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -60,17 +66,12 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/acceptance/landing-page.test.tsx",
+          "command": "pnpm exec prisma generate",
           "exit_code": 0,
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/Welcome.test.tsx",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec tsc --noEmit",
+          "command": "pnpm exec vitest run tests/acceptance/case-api.test.ts",
           "exit_code": 0,
           "status": "passed"
         },
@@ -85,8 +86,36 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:evidence-finder-landing",
-      "name": "evidence-finder-landing",
+      "log_ref": "event:task.verification_evidence:case-api-prisma",
+      "name": "case-api-prisma",
+      "status": "green",
+      "tier": "extended"
+    },
+    {
+      "checks": [
+        {
+          "command": "pnpm install --frozen-lockfile",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/case-input-ui.test.tsx",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec tsc --noEmit",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm run typecheck",
+          "exit_code": 0,
+          "status": "passed"
+        }
+      ],
+      "log_ref": "event:task.verification_evidence:case-input-ui",
+      "name": "case-input-ui",
       "status": "green",
       "tier": "extended"
     }
