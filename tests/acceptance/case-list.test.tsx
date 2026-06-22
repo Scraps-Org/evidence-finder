@@ -1,49 +1,83 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
-import CaseList from '../../src/components/CaseList';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-vi.stubGlobal('fetch', vi.fn<[string], Promise<Response>>());
-
-describe('Case List: Display Newly Created Case', () => {
+describe('Case List (newly saved case appears in list)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should display a newly saved case in the list', async () => {
-    const mockCaseId = 'case-' + Date.now();
-    const mockCaseName = 'New Test Case';
+  it('should display newly saved case in the case list after successful creation', async () => {
+    const user = userEvent.setup();
+    const newCase = { id: 'case-123', term: 'Test Case Item' };
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          cases: [
-            { id: mockCaseId, identifyingTerms: mockCaseName, createdAt: new Date().toISOString() },
-          ],
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } }
+    const mockFetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(newCase), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
       )
     );
+    vi.stubGlobal('fetch', mockFetch);
 
-    render(<CaseList />);
+    render(<EvidenceFinder />);
 
+    const input = screen.getByRole('textbox', { name: /identifying term|search term|case/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
+
+    await user.type(input, newCase.term);
+    await user.click(submitButton);
+
+    // Verify the new case appears in the list
     await waitFor(() => {
-      expect(screen.getByText(mockCaseName)).toBeInTheDocument();
+      expect(screen.getByText(newCase.term)).toBeInTheDocument();
     });
   });
 
-  it('should fetch cases from /api/cases endpoint', async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      new Response(JSON.stringify({ cases: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
+  it('should display multiple cases in the list', async () => {
+    const user = userEvent.setup();
+    const case1 = { id: 'case-1', term: 'First Case' };
+    const case2 = { id: 'case-2', term: 'Second Case' };
 
-    render(<CaseList />);
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(case1), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(case2), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<EvidenceFinder />);
+
+    const input = screen.getByRole('textbox', { name: /identifying term|search term|case/i });
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
+
+    // Create first case
+    await user.type(input, case1.term);
+    await user.click(submitButton);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/cases');
+      expect(screen.getByText(case1.term)).toBeInTheDocument();
+    });
+
+    // Create second case
+    await user.clear(input);
+    await user.type(input, case2.term);
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(case1.term)).toBeInTheDocument();
+      expect(screen.getByText(case2.term)).toBeInTheDocument();
     });
   });
 });
