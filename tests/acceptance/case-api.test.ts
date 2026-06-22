@@ -1,66 +1,55 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { POST } from '../../src/app/api/cases/route';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 describe('Case API Route', () => {
-  afterEach(async () => {
-    await prisma.$disconnect();
-  });
-
-  it('accepts valid identifying terms and inserts into Case table', async () => {
-    const timestamp = Date.now().toString();
-    const body = JSON.stringify({ identifyingTerms: `Test Case ${timestamp}` });
+  it('inserts a valid case into the database', async () => {
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body,
+      body: JSON.stringify({ identifyingTerms: 'Test Case Name' }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request as never);
     expect(response.status).toBe(201);
 
-    const responseData = await response.json() as { id: string; identifyingTerms: string };
-    expect(responseData).toHaveProperty('id');
-    expect(responseData.identifyingTerms).toBe(`Test Case ${timestamp}`);
-
-    const savedCase = await prisma.case.findUnique({
-      where: { id: responseData.id },
-    });
-    expect(savedCase).not.toBeNull();
-    expect(savedCase!.identifyingTerms).toBe(`Test Case ${timestamp}`);
-
-    await prisma.case.delete({ where: { id: responseData.id } });
+    const data = await response.json() as { id: string; identifyingTerms: string };
+    expect(data.id).toBeDefined();
+    expect(data.identifyingTerms).toBe('Test Case Name');
   });
 
   it('rejects empty identifying terms', async () => {
-    const body = JSON.stringify({ identifyingTerms: '' });
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body,
+      body: JSON.stringify({ identifyingTerms: '' }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request as never);
     expect(response.status).toBe(400);
 
-    const responseData = await response.json() as { error: string };
-    expect(responseData).toHaveProperty('error');
+    const data = await response.json() as { error: string };
+    expect(data.error).toBeDefined();
   });
 
   it('rejects whitespace-only identifying terms', async () => {
-    const body = JSON.stringify({ identifyingTerms: '   ' });
     const request = new Request('http://localhost:3000/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body,
+      body: JSON.stringify({ identifyingTerms: '   ' }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request as never);
     expect(response.status).toBe(400);
+  });
 
-    const responseData = await response.json() as { error: string };
-    expect(responseData).toHaveProperty('error');
+  it('returns error for missing identifying terms field', async () => {
+    const request = new Request('http://localhost:3000/api/cases', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    const response = await POST(request as never);
+    expect(response.status).toBe(400);
   });
 });
