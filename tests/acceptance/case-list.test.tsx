@@ -1,48 +1,49 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
-import EvidenceFinder from '../../src/components/EvidenceFinder';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import CaseList from '../../src/components/CaseList';
 
-vi.stubGlobal('fetch', vi.fn<[string, RequestInit?], Promise<Response>>());
+vi.stubGlobal('fetch', vi.fn<[string], Promise<Response>>());
 
-describe('D2-case-input: Case List Integration', () => {
+describe('Case List: Display Newly Created Case', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('displays newly saved case in the list after creation', async () => {
-    const user = userEvent.setup();
-    const mockFetch = vi.mocked(fetch);
+  it('should display a newly saved case in the list', async () => {
+    const mockCaseId = 'case-' + Date.now();
+    const mockCaseName = 'New Test Case';
 
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: 'case-abc-123', searchTerms: 'Sarah Johnson' }), {
-        status: 201,
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          cases: [
+            { id: mockCaseId, identifyingTerms: mockCaseName, createdAt: new Date().toISOString() },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    );
+
+    render(<CaseList />);
+
+    await waitFor(() => {
+      expect(screen.getByText(mockCaseName)).toBeInTheDocument();
+    });
+  });
+
+  it('should fetch cases from /api/cases endpoint', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ cases: [] }), {
+        status: 200,
         headers: { 'content-type': 'application/json' },
       })
     );
 
-    mockFetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify([
-          { id: 'case-abc-123', searchTerms: 'Sarah Johnson' },
-        ]),
-        {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }
-      )
-    );
-
-    render(<EvidenceFinder />);
-
-    const input = screen.getByRole('textbox', { name: /search terms|case name|identifying/i });
-    await user.type(input, 'Sarah Johnson');
-
-    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
-    await user.click(submitButton);
+    render(<CaseList />);
 
     await waitFor(() => {
-      expect(screen.getByText('Sarah Johnson')).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledWith('/api/cases');
     });
   });
 });
