@@ -1,43 +1,50 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
 
-describe('Case Persistence (Prisma & Migration)', () => {
+describe('D2-case-input: Persistence & Migration', () => {
+  const testId = `persist-${Date.now()}`;
+
   afterEach(async () => {
-    const timestamp = new Date().toISOString();
     await prisma.case.deleteMany({
-      where: {
-        identifyingTerms: {
-          contains: timestamp,
-        },
-      },
+      where: { terms: { contains: testId } },
     });
     await prisma.$disconnect();
   });
 
-  it('Case table exists and supports create/read operations', async () => {
-    const testId = new Date().toISOString();
-    const identifyingTerms = `Case Persistence Test ${testId}`;
+  it('Case table exists and can store and retrieve identifying terms', async () => {
+    const terms = `Test Case ${testId}`;
 
     const created = await prisma.case.create({
-      data: { identifyingTerms },
+      data: { terms },
     });
 
     expect(created.id).toBeDefined();
-    expect(created.identifyingTerms).toBe(identifyingTerms);
+    expect(created.terms).toBe(terms);
 
-    const found = await prisma.case.findUnique({ where: { id: created.id } });
-    expect(found).not.toBeNull();
-    expect(found?.identifyingTerms).toBe(identifyingTerms);
+    const retrieved = await prisma.case.findUnique({
+      where: { id: created.id },
+    });
+
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.terms).toBe(terms);
   });
 
-  it('Case migration file exists and creates the Case table', async () => {
-    const tables = await prisma.$queryRaw`
-      SELECT table_name FROM information_schema.tables 
-      WHERE table_schema = 'public' AND table_name = '${prisma.case.name}';
-    `;
+  it('migration file exists in prisma/migrations/', () => {
+    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
+    expect(fs.existsSync(migrationsDir)).toBe(true);
 
-    expect(tables).toBeDefined();
+    const files = fs.readdirSync(migrationsDir);
+    const hasCaseMigration = files.some((file) => {
+      const migrationPath = path.join(migrationsDir, file, 'migration.sql');
+      if (!fs.existsSync(migrationPath)) return false;
+      const content = fs.readFileSync(migrationPath, 'utf-8');
+      return content.includes('CREATE TABLE') && content.toLowerCase().includes('case');
+    });
+
+    expect(hasCaseMigration).toBe(true);
   });
 });
