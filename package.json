@@ -17,12 +17,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --passWithNoTests --coverage"
+    "test:coverage": "vitest run --passWithNoTests --coverage",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "next": "^15.1.6",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "@prisma/client": "^6.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
@@ -42,6 +44,7 @@
     "globals": "^16.5.0",
     "jsdom": "^26.0.0",
     "prettier": "^3.4.2",
+    "prisma": "^6.0.0",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.20.0",
