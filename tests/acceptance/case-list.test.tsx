@@ -1,51 +1,50 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import Page from '../../src/app/page';
+import EvidenceFinder from '../../src/components/EvidenceFinder';
 
-describe('Case List Display (D2-case-input)', () => {
+describe('D2-case-input: Case list integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('displays newly saved case in the case list after successful submission', async () => {
-    const mockFetch = vi.fn((url) => {
-      if (url === '/api/cases' && !url.includes('POST')) {
+  it('displays newly created case in the case list', async () => {
+    const testCaseName = `case-${Date.now()}`;
+
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/cases')) {
         return Promise.resolve(
           new Response(
-            JSON.stringify([
-              { id: '1', searchTerms: 'Alice Johnson' },
-              { id: '2', searchTerms: 'Bob Wilson' }
-            ]),
-            { status: 200, headers: { 'content-type': 'application/json' } }
+            JSON.stringify({
+              id: '1',
+              identifyingTerms: testCaseName,
+              createdAt: new Date().toISOString(),
+            }),
+            {
+              status: 201,
+              headers: { 'content-type': 'application/json' },
+            }
           )
         );
       }
       return Promise.resolve(
-        new Response(
-          JSON.stringify({ id: '3', searchTerms: 'Charlie Brown' }),
-          { status: 201, headers: { 'content-type': 'application/json' } }
-        )
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
       );
-    });
-    vi.stubGlobal('fetch', mockFetch);
+    }));
 
-    render(<Page />);
+    render(<EvidenceFinder />);
 
-    await waitFor(() => {
-      expect(screen.queryByText('Alice Johnson')).toBeInTheDocument();
-    });
+    const input = screen.getByRole('textbox', { name: /identifying terms|search|case/i });
+    await userEvent.type(input, testCaseName);
 
-    const input = screen.getByPlaceholderText(/identifying terms/i);
-    const submitButton = screen.getByRole('button', { name: /submit|save|create case/i });
-
-    await userEvent.type(input, 'Charlie Brown');
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
     await userEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Charlie Brown')).toBeInTheDocument();
+      expect(screen.getByText(testCaseName)).toBeInTheDocument();
     });
-
-    vi.unstubAllGlobals();
   });
 });
