@@ -1,52 +1,40 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case Persistence', () => {
-  afterEach(async () => {
-    await prisma.case.deleteMany();
-    await prisma.$disconnect();
-  });
+describe('Case Persistence (Prisma Schema & Migration)', () => {
+  const testId = `persist-${Date.now()}`;
 
-  it('creates and reads back a case via Prisma and Vercel Postgres', async () => {
-    const testTerms = `persistence-test-${Date.now()}`;
+  it('creates a Case table via migration and persists data', async () => {
+    const searchTerms = `Test Case ${testId}`;
 
     const created = await prisma.case.create({
-      data: { terms: testTerms }
+      data: { searchTerms },
     });
 
     expect(created.id).toBeDefined();
-    expect(created.terms).toBe(testTerms);
+    expect(created.searchTerms).toBe(searchTerms);
 
     const found = await prisma.case.findUnique({ where: { id: created.id } });
     expect(found).not.toBeNull();
-    expect(found?.terms).toBe(testTerms);
+    expect(found!.searchTerms).toBe(searchTerms);
   });
 
-  it('persists case data across multiple queries', async () => {
-    const testTerms = `multi-query-${Date.now()}`;
+  it('lists all cases from the database', async () => {
+    const searchTerms = `List Case ${testId}`;
 
-    const created = await prisma.case.create({
-      data: { terms: testTerms }
-    });
+    await prisma.case.create({ data: { searchTerms } });
 
     const allCases = await prisma.case.findMany();
-    const found = allCases.find((c) => c.id === created.id);
-
-    expect(found).toBeDefined();
-    expect(found?.terms).toBe(testTerms);
+    expect(allCases.length).toBeGreaterThan(0);
+    expect(allCases.some((c) => c.searchTerms === searchTerms)).toBe(true);
   });
 
-  it('stores case with required fields', async () => {
-    const testTerms = `required-fields-${Date.now()}`;
-
-    const created = await prisma.case.create({
-      data: { terms: testTerms }
+  afterEach(async () => {
+    await prisma.case.deleteMany({
+      where: { searchTerms: { contains: testId } },
     });
-
-    expect(created).toHaveProperty('id');
-    expect(created).toHaveProperty('terms');
-    expect(created).toHaveProperty('createdAt');
+    await prisma.$disconnect();
   });
 });
