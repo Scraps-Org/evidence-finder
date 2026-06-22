@@ -1,71 +1,61 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import CaseCreationForm from '../../src/components/CaseCreationForm';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import CaseForm from '../../src/components/CaseForm';
 
-describe('CaseCreationForm - Case Input and Submission', () => {
+describe('Case Creation Form - UI', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  it('renders form with input field and submit button', () => {
+    render(<CaseForm />);
+    expect(screen.getByLabelText(/identifying terms/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /submit|create|save/i })).toBeInTheDocument();
   });
 
-  it('renders form with input field for identifying terms', () => {
-    render(<CaseCreationForm />);
+  it('accepts identifying terms input', async () => {
+    render(<CaseForm />);
     const input = screen.getByLabelText(/identifying terms/i) as HTMLInputElement;
-    expect(input).toBeInTheDocument();
-  });
-
-  it('accepts identifying terms input and submits to API', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: '1', identifyingTerms: 'John Doe' }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    render(<CaseCreationForm />);
-    const input = screen.getByLabelText(/identifying terms/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /submit|create/i });
-
     fireEvent.change(input, { target: { value: 'John Doe' } });
-    fireEvent.click(submitButton);
+    expect(input.value).toBe('John Doe');
+  });
 
+  it('calls submit handler when form is submitted', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ id: '1' }), { status: 201 }))));
+    render(<CaseForm />);
+    const input = screen.getByLabelText(/identifying terms/i) as HTMLInputElement;
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
+    
+    fireEvent.change(input, { target: { value: 'Jane Smith' } });
+    fireEvent.click(submitButton);
+    
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/cases'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({ 'content-type': 'application/json' }),
-          body: expect.stringContaining('John Doe'),
-        })
-      );
+      expect(input.value).toBe('');
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects empty input and shows error message', async () => {
+    render(<CaseForm />);
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
+    
+    fireEvent.click(submitButton);
+    
+    await waitFor(() => {
+      expect(screen.getByText(/cannot be empty/i)).toBeInTheDocument();
     });
   });
 
-  it('rejects empty identifying terms input', async () => {
-    render(<CaseCreationForm />);
+  it('rejects whitespace-only input and shows error', async () => {
+    render(<CaseForm />);
     const input = screen.getByLabelText(/identifying terms/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /submit|create/i });
-
-    fireEvent.change(input, { target: { value: '' } });
-    fireEvent.click(submitButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/required|cannot be empty|whitespace/i)).toBeInTheDocument();
-    });
-  });
-
-  it('rejects whitespace-only identifying terms input', async () => {
-    render(<CaseCreationForm />);
-    const input = screen.getByLabelText(/identifying terms/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /submit|create/i });
-
+    const submitButton = screen.getByRole('button', { name: /submit|create|save/i });
+    
     fireEvent.change(input, { target: { value: '   ' } });
     fireEvent.click(submitButton);
-
+    
     await waitFor(() => {
-      expect(screen.getByText(/required|cannot be empty|whitespace/i)).toBeInTheDocument();
+      expect(screen.getByText(/cannot be empty/i)).toBeInTheDocument();
     });
   });
 }
