@@ -1,50 +1,63 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-describe('D2-case-input: Case Persistence & Migration', () => {
-  afterEach(async () => {
-    await prisma.case.deleteMany();
+describe('Case Persistence: Database Operations', () => {
+  beforeEach(async () => {
+    await prisma.case.deleteMany({});
   });
 
-  it('Case table exists via Prisma migration', async () => {
-    const result = await prisma.case.findMany();
-    expect(Array.isArray(result)).toBe(true);
+  afterAll(async () => {
+    await prisma.$disconnect();
   });
 
-  it('creates and retrieves a case row from Vercel Postgres', async () => {
-    const timestamp = new Date().toISOString();
-    const caseData = await prisma.case.create({
+  it('should create and retrieve a case from the database', async () => {
+    const identifyingTerms = `Persistence Test ${Date.now()}`;
+
+    const createdCase = await prisma.case.create({
       data: {
-        searchTerms: `Case-${timestamp}`,
+        identifyingTerms,
       },
     });
 
-    expect(caseData.id).toBeDefined();
-    expect(caseData.searchTerms).toBe(`Case-${timestamp}`);
+    expect(createdCase.id).toBeDefined();
+    expect(createdCase.identifyingTerms).toBe(identifyingTerms);
 
-    const retrieved = await prisma.case.findUnique({
-      where: { id: caseData.id },
+    const retrievedCase = await prisma.case.findUnique({
+      where: { id: createdCase.id },
     });
 
-    expect(retrieved).not.toBeNull();
-    expect(retrieved!.searchTerms).toBe(`Case-${timestamp}`);
+    expect(retrievedCase).not.toBeNull();
+    expect(retrievedCase?.identifyingTerms).toBe(identifyingTerms);
   });
 
-  it('persists multiple cases independently', async () => {
-    const timestamp = new Date().toISOString();
+  it('should retrieve all cases', async () => {
+    const terms1 = `Case 1 ${Date.now()}`;
+    const terms2 = `Case 2 ${Date.now()}`;
 
-    const case1 = await prisma.case.create({
-      data: { searchTerms: `Case1-${timestamp}` },
-    });
-    const case2 = await prisma.case.create({
-      data: { searchTerms: `Case2-${timestamp}` },
+    await prisma.case.create({ data: { identifyingTerms: terms1 } });
+    await prisma.case.create({ data: { identifyingTerms: terms2 } });
+
+    const cases = await prisma.case.findMany();
+
+    expect(cases.length).toBeGreaterThanOrEqual(2);
+    expect(cases.some((c) => c.identifyingTerms === terms1)).toBe(true);
+    expect(cases.some((c) => c.identifyingTerms === terms2)).toBe(true);
+  });
+
+  it('should persist case data across queries', async () => {
+    const identifyingTerms = `Roundtrip Test ${Date.now()}`;
+
+    const created = await prisma.case.create({
+      data: { identifyingTerms },
     });
 
-    const all = await prisma.case.findMany();
-    const ids = all.map((c) => c.id).sort();
-    expect(ids).toContain(case1.id);
-    expect(ids).toContain(case2.id);
+    const found = await prisma.case.findUnique({
+      where: { id: created.id },
+    });
+
+    expect(found?.identifyingTerms).toBe(identifyingTerms);
+    expect(found?.id).toBe(created.id);
   });
 });
