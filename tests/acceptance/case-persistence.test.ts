@@ -1,36 +1,50 @@
-import { describe, it, expect, afterAll } from 'vitest'
-import { PrismaClient } from '@prisma/client'
+import { describe, it, expect, afterAll, afterEach } from 'vitest';
+import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL } },
+});
+
+afterEach(async () => {
+  await prisma.case.deleteMany({
+    where: { identifyingTerms: { startsWith: '__test__' } },
+  });
+});
 
 afterAll(async () => {
-  await prisma.case.deleteMany({ where: { identifyingTerms: { startsWith: 'ACCEPTANCE-TEST-' } } })
-  await prisma.$disconnect()
-})
+  await prisma.$disconnect();
+});
 
 describe('Case persistence', () => {
-  it('writes a Case row with identifyingTerms and reads it back', async () => {
-    const terms = `ACCEPTANCE-TEST-${Date.now()}`
+  it('persists a Case row with identifyingTerms and reads it back', async () => {
+    const uniqueTerm = `__test__Alice_${Date.now()}`;
 
     const created = await prisma.case.create({
-      data: { identifyingTerms: terms },
-    })
+      data: { identifyingTerms: uniqueTerm },
+    });
 
-    expect(created.id).toBeDefined()
-    expect(created.identifyingTerms).toBe(terms)
+    expect(created.id).toBeDefined();
+    expect(created.identifyingTerms).toBe(uniqueTerm);
 
-    const found = await prisma.case.findUnique({ where: { id: created.id } })
-    expect(found).not.toBeNull()
-    expect(found!.identifyingTerms).toBe(terms)
-  })
+    const found = await prisma.case.findFirst({
+      where: { id: created.id },
+    });
 
-  it('can query all cases and the written row appears in the list', async () => {
-    const terms = `ACCEPTANCE-TEST-${Date.now()}-list`
+    expect(found).not.toBeNull();
+    expect(found!.identifyingTerms).toBe(uniqueTerm);
+  });
 
-    await prisma.case.create({ data: { identifyingTerms: terms } })
+  it('the case list query returns persisted rows including identifyingTerms', async () => {
+    const uniqueTerm = `__test__Bob_${Date.now()}`;
 
-    const all = await prisma.case.findMany()
-    const match = all.find((c) => c.identifyingTerms === terms)
-    expect(match).toBeDefined()
-  })
-})
+    await prisma.case.create({ data: { identifyingTerms: uniqueTerm } });
+
+    const cases = await prisma.case.findMany({
+      where: { identifyingTerms: { startsWith: '__test__' } },
+    });
+
+    const match = cases.find((c) => c.identifyingTerms === uniqueTerm);
+    expect(match).toBeDefined();
+    expect(match!.identifyingTerms).toBe(uniqueTerm);
+  });
+});
