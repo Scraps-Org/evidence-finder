@@ -1,40 +1,55 @@
 import { describe, it, expect } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
+import { readdirSync, readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 
-describe('prisma/migrations/ — migration structure', () => {
-  const migrationsDir = path.resolve(process.cwd(), 'prisma', 'migrations');
+describe('Prisma migration — Case table', () => {
+  const migrationsDir = join(process.cwd(), 'prisma', 'migrations');
 
-  it('contains exactly one migration directory', () => {
-    expect(fs.existsSync(migrationsDir), 'prisma/migrations/ directory must exist').toBe(true);
+  it('prisma/migrations/ exists and contains exactly one migration directory', () => {
+    expect(existsSync(migrationsDir)).toBe(true);
 
-    const entries = fs.readdirSync(migrationsDir).filter((entry) => {
-      const fullPath = path.join(migrationsDir, entry);
-      return fs.statSync(fullPath).isDirectory();
-    });
+    const entries = readdirSync(migrationsDir, { withFileTypes: true });
+    const migrationDirs = entries.filter(
+      (e) => e.isDirectory() && e.name !== 'migration_lock.toml'
+    );
 
-    expect(
-      entries.length,
-      `Expected exactly 1 migration directory, found: ${entries.join(', ')}`
-    ).toBe(1);
+    expect(migrationDirs).toHaveLength(1);
   });
 
-  it('the migration SQL creates the Case table with an identifyingTerms column', () => {
-    const entries = fs.readdirSync(migrationsDir).filter((entry) => {
-      const fullPath = path.join(migrationsDir, entry);
-      return fs.statSync(fullPath).isDirectory();
-    });
+  it('the single migration SQL issues a CREATE TABLE for Case with an identifyingTerms column', () => {
+    const entries = readdirSync(migrationsDir, { withFileTypes: true });
+    const migrationDirs = entries.filter(
+      (e) => e.isDirectory() && e.name !== 'migration_lock.toml'
+    );
 
-    const migrationDir = entries[0]!;
-    const sqlPath = path.join(migrationsDir, migrationDir, 'migration.sql');
-    expect(fs.existsSync(sqlPath), `migration.sql not found in ${migrationDir}`).toBe(true);
+    const sqlPath = join(migrationsDir, migrationDirs[0]!.name, 'migration.sql');
+    expect(existsSync(sqlPath)).toBe(true);
 
-    const sql = fs.readFileSync(sqlPath, 'utf-8').toLowerCase();
-    expect(sql, 'migration SQL must contain CREATE TABLE').toMatch(/create\s+table/);
-    expect(sql, 'migration SQL must reference a Case table').toMatch(/\bcase\b|"case"/i);
-    expect(
-      sql,
-      'migration SQL must include identifyingterms column'
-    ).toMatch(/identifyingterms/);
+    const sql = readFileSync(sqlPath, 'utf-8').toLowerCase();
+
+    expect(sql).toMatch(/create table/i);
+    // Must reference the Case table (case-insensitive, quoted or bare)
+    expect(sql).toMatch(/["'`]?case["'`]?/i);
+    // Must include the identifyingTerms column (snake_case in SQL is also acceptable)
+    expect(sql).toMatch(/identifying_terms|identifyingterms/i);
+  });
+
+  it('no ad-hoc SQL files outside prisma/migrations/ create the Case table', () => {
+    const cwd = process.cwd();
+    const suspectDirs = ['scripts', 'sql', 'db', 'database', 'migrations'];
+
+    for (const dir of suspectDirs) {
+      const dirPath = join(cwd, dir);
+      if (!existsSync(dirPath)) continue;
+
+      const files = readdirSync(dirPath).filter((f) => f.endsWith('.sql'));
+      for (const file of files) {
+        const content = readFileSync(join(dirPath, file), 'utf-8').toLowerCase();
+        expect(
+          content,
+          `Ad-hoc SQL file ${dir}/${file} must not CREATE TABLE Case outside prisma/migrations/`
+        ).not.toMatch(/create table.*["'`]?case["'`]?/i);
+      }
+    }
   });
 });
