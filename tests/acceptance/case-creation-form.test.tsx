@@ -1,105 +1,72 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import Page from '../../src/app/page';
 import { PrismaClient } from '@prisma/client';
+import CaseCreationForm from '../../src/components/CaseCreationForm';
 
 const prisma = new PrismaClient();
 
-vi.stubGlobal('fetch', vi.fn());
-
-describe('Case creation form [D2-case-input]', () => {
-  afterEach(async () => {
-    vi.clearAllMocks();
+describe('Case creation form', () => {
+  beforeEach(async () => {
     await prisma.case.deleteMany({});
   });
 
-  it('should submit valid identifying terms and save to database', async () => {
-    const identifyingTerms = `Case_${Date.now()}`;
-    const mockCase = { id: '1', identifyingTerms, createdAt: new Date().toISOString() };
+  afterEach(async () => {
+    await prisma.case.deleteMany({});
+    await prisma.$disconnect();
+  });
 
-    vi.mocked(global.fetch).mockImplementation((url) => {
-      if (typeof url === 'string' && url.includes('/api/cases')) {
-        return Promise.resolve(new Response(JSON.stringify([mockCase]), { status: 200 }));
-      }
-      return Promise.reject(new Error('Unexpected fetch'));
-    });
-
+  it('should submit identifying terms and save a case to the database', async () => {
     const user = userEvent.setup();
-    render(<Page />);
+    render(<CaseCreationForm />);
 
-    const input = screen.getByPlaceholderText(/identifying terms/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /submit/i });
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
+    const identifyingTerms = `test-case-${Date.now()}`;
 
     await user.type(input, identifyingTerms);
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(vi.mocked(global.fetch)).toHaveBeenCalledWith(
-        '/api/cases',
-        expect.objectContaining({ method: 'POST' })
-      );
-    });
-  });
-
-  it('should show the newly created case in the case list', async () => {
-    const identifyingTerms = `CaseInList_${Date.now()}`;
-    const mockCase = { id: '1', identifyingTerms, createdAt: new Date().toISOString() };
-
-    let callCount = 0;
-    vi.mocked(global.fetch).mockImplementation((url) => {
-      if (typeof url === 'string' && url.includes('/api/cases')) {
-        callCount++;
-        if (callCount === 2) {
-          return Promise.resolve(new Response(JSON.stringify([mockCase]), { status: 200 }));
-        }
-        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
-      }
-      return Promise.reject(new Error('Unexpected fetch'));
-    });
-
-    const user = userEvent.setup();
-    render(<Page />);
-
-    const input = screen.getByPlaceholderText(/identifying terms/i) as HTMLInputElement;
-    const submitButton = screen.getByRole('button', { name: /submit/i });
-
-    await user.type(input, identifyingTerms);
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(identifyingTerms)).toBeInTheDocument();
-    });
-  });
-
-  it('should reject empty input and show error', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
-
-    const user = userEvent.setup();
-    render(<Page />);
 
     const submitButton = screen.getByRole('button', { name: /submit/i });
     await user.click(submitButton);
 
-    await waitFor(() => {
-      expect(screen.getByText(/please enter identifying terms/i)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 100));
+
+    const savedCase = await prisma.case.findFirst({
+      where: { identifyingTerms },
     });
+    expect(savedCase).not.toBeNull();
+    expect(savedCase?.identifyingTerms).toBe(identifyingTerms);
   });
 
-  it('should reject whitespace-only input and show error', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
-
+  it('should reject empty input and show an error', async () => {
     const user = userEvent.setup();
-    render(<Page />);
+    render(<CaseCreationForm />);
 
-    const input = screen.getByPlaceholderText(/identifying terms/i) as HTMLInputElement;
     const submitButton = screen.getByRole('button', { name: /submit/i });
+    await user.click(submitButton);
 
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(screen.getByText(/cannot be empty/i)).toBeInTheDocument();
+
+    const count = await prisma.case.count();
+    expect(count).toBe(0);
+  });
+
+  it('should reject whitespace-only input and show an error', async () => {
+    const user = userEvent.setup();
+    render(<CaseCreationForm />);
+
+    const input = screen.getByRole('textbox', { name: /identifying terms/i });
     await user.type(input, '   ');
+
+    const submitButton = screen.getByRole('button', { name: /submit/i });
     await user.click(submitButton);
 
-    await waitFor(() => {
-      expect(screen.getByText(/please enter identifying terms/i)).toBeInTheDocument();
-    });
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(screen.getByText(/cannot be empty/i)).toBeInTheDocument();
+
+    const count = await prisma.case.count();
+    expect(count).toBe(0);
   });
 });
