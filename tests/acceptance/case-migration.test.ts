@@ -1,23 +1,18 @@
+import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { describe, it, expect } from 'vitest';
 
-describe('Case Migration — D2-case-input', () => {
-  it('has exactly one migration file under prisma/migrations/', () => {
+describe('Case migration [D2-case-input]', () => {
+  it('should have exactly one migration file creating Case table with identifyingTerms column', () => {
     const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-    const entries = fs.readdirSync(migrationsDir).filter((entry) => {
-      return fs.statSync(path.join(migrationsDir, entry)).isDirectory();
-    });
-    expect(entries).toHaveLength(1);
-  });
-
-  it('migration creates Case table with identifyingTerms text column', () => {
-    const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-    const migrationDir = fs.readdirSync(migrationsDir)[0]!;
-    const migrationFile = path.join(migrationsDir, migrationDir, 'migration.sql');
-    const content = fs.readFileSync(migrationFile, 'utf-8');
-
-    expect(content).toMatch(/CREATE TABLE[\s\S]*"Case"/i);
-    expect(content).toMatch(/identifyingTerms[\s\S]*TEXT/i);
+    const files = fs.readdirSync(migrationsDir).filter((f) => !f.startsWith('.') && f !== 'migration_lock.toml');
+    
+    expect(files).toHaveLength(1);
+    const migrationName = files[0];
+    const migrationFile = path.join(migrationsDir, migrationName, 'migration.sql');
+    const migrationContent = fs.readFileSync(migrationFile, 'utf-8');
+    
+    expect(migrationContent).toMatch(/CREATE TABLE.*Case/i);
+    expect(migrationContent).toMatch(/identifyingTerms\s+TEXT/i);
   });
 });
