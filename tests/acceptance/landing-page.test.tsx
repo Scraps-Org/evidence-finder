@@ -1,19 +1,49 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import Page from '../../src/app/page';
-import packageJson from '../../package.json';
 
-describe('Landing Page Acceptance', () => {
-  it('should have the correct package name', () => {
-    expect(packageJson.name).toBe('evidence-finder');
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
-  it('should render a heading describing the evidence-finder service', () => {
+describe('Case creation UI', () => {
+  it('shows the saved case in the list after successful submission', async () => {
+    const term = 'Jane Doe';
+    const createdCase = { id: 'abc-123', identifyingTerms: term };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValueOnce(
+        new Response(JSON.stringify(createdCase), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    );
+
     render(<Page />);
 
-    // Search for a heading that contains either "증거" (Korean for evidence) or "evidence"
-    const heading = screen.getByRole('heading', { name: new RegExp('증거|evidence', 'i') });
+    const input = screen.getByRole('textbox');
+    await userEvent.type(input, term);
 
-    expect(heading).toBeTruthy();
+    const submitBtn = screen.getByRole('button', { name: /submit|create|search|add/i });
+    await userEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(term)).toBeInTheDocument();
+    });
+  });
+
+  it('does not call the API when the input is empty', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<Page />);
+
+    const submitBtn = screen.getByRole('button', { name: /submit|create|search|add/i });
+    await userEvent.click(submitBtn);
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
