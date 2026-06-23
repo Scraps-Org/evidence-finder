@@ -1,5 +1,9 @@
-import { EvidenceFinder } from '~/components/EvidenceFinder';
+import EvidenceFinder from '../components/EvidenceFinder';
 
 export default function Home() {
-  return <EvidenceFinder />;
+  return (
+    <main>
+      <EvidenceFinder />
+    </main>
+  );
 }
