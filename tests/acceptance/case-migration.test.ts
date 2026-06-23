@@ -1,24 +1,31 @@
-import { describe, it, expect } from 'vitest';
-import { readdirSync, existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { describe, it, expect } from 'vitest'
+import * as fs from 'fs'
+import * as path from 'path'
 
-describe('Case migration', () => {
+describe('Case migration file', () => {
   it('has exactly one migration directory under prisma/migrations/ that creates the Case table with identifyingTerms', () => {
-    const migrationsDir = join(process.cwd(), 'prisma', 'migrations');
-    expect(existsSync(migrationsDir), 'prisma/migrations/ directory must exist').toBe(true);
+    const migrationsDir = path.resolve(process.cwd(), 'prisma', 'migrations')
+    expect(fs.existsSync(migrationsDir), 'prisma/migrations/ directory must exist').toBe(true)
 
-    const entries = readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
+    const entries = fs.readdirSync(migrationsDir).filter(
+      (e) => fs.statSync(path.join(migrationsDir, e)).isDirectory(),
+    )
+    expect(entries.length, 'exactly one migration directory must exist under prisma/migrations/').toBe(1)
 
-    expect(entries.length).toBe(1);
+    const sqlFile = path.join(migrationsDir, entries[0]!, 'migration.sql')
+    expect(fs.existsSync(sqlFile), `migration.sql must exist at ${sqlFile}`).toBe(true)
 
-    const migrationSql = join(migrationsDir, entries[0]!, 'migration.sql');
-    expect(existsSync(migrationSql), `migration.sql must exist in ${entries[0]}`).toBe(true);
+    const sql = fs.readFileSync(sqlFile, 'utf-8').toLowerCase()
+    expect(sql, 'migration must CREATE the Case table').toMatch(/create table/)
+    expect(sql, 'migration must include the identifyingterms column').toMatch(/identifyingterms/)
+  })
 
-    const sql = readFileSync(migrationSql, 'utf-8');
-    expect(sql.toLowerCase()).toMatch(/create table/i);
-    expect(sql.toLowerCase()).toMatch(/"case"|`case`|case/i);
-    expect(sql.toLowerCase()).toMatch(/identifyingterms|identifying_terms/i);
-  });
-});
+  it('prisma/schema.prisma defines a Case model with identifyingTerms', () => {
+    const schemaPath = path.resolve(process.cwd(), 'prisma', 'schema.prisma')
+    expect(fs.existsSync(schemaPath), 'prisma/schema.prisma must exist').toBe(true)
+
+    const schema = fs.readFileSync(schemaPath, 'utf-8')
+    expect(schema, 'schema must define a Case model').toMatch(/model\s+Case/)
+    expect(schema, 'schema must include identifyingTerms field').toMatch(/identifyingTerms/)
+  })
+})
