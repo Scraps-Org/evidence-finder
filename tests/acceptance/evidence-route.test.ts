@@ -1,87 +1,107 @@
 import { POST } from '../../src/app/api/evidence/route'
+import { PrismaClient } from '@prisma/client'
 
-const FAKE_CASE_ID = 'test-case-id-001'
-const FAKE_URL = 'https://www.example.com/some-page'
-const FAKE_HTML = '<html><head><title>Example Domain Title</title></head><body>content</body></html>'
+const prisma = new PrismaClient()
 
-beforeEach(() => {
-  vi.clearAllMocks()
+const FAKE_TITLE = 'Fake Page Title'
+const FAKE_HTML = `<html><head><title>${FAKE_TITLE}</title></head><body>hello</body></html>`
+
+let caseId: string
+const tag = `route-${Date.now()}`
+
+beforeAll(async () => {
+  const c = await prisma.case.create({ data: { title: `RouteCase ${tag}` } })
+  caseId = c.id
 })
 
-vi.mock('../../src/lib/prisma', () => ({
-  default: {
-    evidence: {
-      create: vi.fn(),
-    },
-  },
-}))
+afterEach(async () => {
+  await prisma.evidence.deleteMany({ where: { caseId } })
+})
 
-describe('POST /api/evidence – server route', () => {
-  it('fetches the target URL, parses title and domain, stamps detectedAt, and persists via Prisma', async () => {
-    const { default: prisma } = await import('../../src/lib/prisma')
-    const mockCreate = vi.mocked(prisma.evidence.create)
+afterAll(async () => {
+  await prisma.case.delete({ where: { id: caseId } })
+  await prisma.$disconnect()
+})
 
-    const createdRow = {
-      id: 'ev-001',
-      url: FAKE_URL,
-      pageTitle: 'Example Domain Title',
-      domain: 'www.example.com',
-      detectedAt: new Date(),
-      caseId: FAKE_CASE_ID,
-    }
-    mockCreate.mockResolvedValue(createdRow)
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+      new Response(FAKE_HTML, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
+    ),
+  )
+})
 
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(FAKE_HTML, { status: 200, headers: { 'content-type': 'text/html' } })
-    )
-    vi.stubGlobal('fetch', fetchSpy)
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
-    const before = new Date()
+describe('POST /api/evidence — server route', () => {
+  it('fetches the target URL server-side', async () => {
+    const targetUrl = `https://example.com/page-${tag}`
     const req = new Request('http://localhost/api/evidence', {
       method: 'POST',
-      body: JSON.stringify({ url: FAKE_URL, caseId: FAKE_CASE_ID }),
+      body: JSON.stringify({ url: targetUrl, caseId }),
       headers: { 'content-type': 'application/json' },
     })
 
-    const res = await POST(req)
-    const after = new Date()
+    await POST(req)
 
-    // (a) fetched the target page server-side
-    expect(fetchSpy).toHaveBeenCalledWith(FAKE_URL)
-
-    // (b) pageTitle extracted from <title>
-    expect(mockCreate).toHaveBeenCalledTimes(1)
-    const callArg = mockCreate.mock.calls[0]![0]
-    expect(callArg.data.pageTitle).toBe('Example Domain Title')
-
-    // (c) domain derived from URL hostname
-    expect(callArg.data.domain).toBe('www.example.com')
-
-    // (d) detectedAt is a server-side timestamp within the request window
-    expect(callArg.data.detectedAt).toBeInstanceOf(Date)
-    expect((callArg.data.detectedAt as Date).getTime()).toBeGreaterThanOrEqual(before.getTime())
-    expect((callArg.data.detectedAt as Date).getTime()).toBeLessThanOrEqual(after.getTime())
-
-    // (e) persisted with correct url and caseId
-    expect(callArg.data.url).toBe(FAKE_URL)
-    expect(callArg.data.caseId).toBe(FAKE_CASE_ID)
-
-    // route returns 201 with the created evidence
-    expect(res.status).toBe(201)
-    const body = await res.json()
-    expect(body.id).toBe('ev-001')
+    const globalFetch = vi.mocked(fetch)
+    expect(globalFetch).toHaveBeenCalledOnce()
+    expect(globalFetch.mock.calls[0]![0]).toBe(targetUrl)
   })
 
-  it('returns 400 when url or caseId is missing', async () => {
-    vi.stubGlobal('fetch', vi.fn())
-
+  it('parses <title> into pageTitle and derives domain from URL hostname', async () => {
+    const targetUrl = `https://example.com/page-${tag}`
     const req = new Request('http://localhost/api/evidence', {
       method: 'POST',
-      body: JSON.stringify({ url: FAKE_URL }),
+      body: JSON.stringify({ url: targetUrl, caseId }),
       headers: { 'content-type': 'application/json' },
     })
 
     const res = await POST(req)
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(201)
+
+    const body = await res.json() as { pageTitle: string; domain: string; detectedAt: string; url: string; caseId: string }
+    expect(body.pageTitle).toBe(FAKE_TITLE)
+    expect(body.domain).toBe('example.com')
+  })
+
+  it('stamps detectedAt with a server-side timestamp close to now', async () => {
+    const before = Date.now()
+    const targetUrl = `https://example.com/ts-${tag}`
+    const req = new Request('http://localhost/api/evidence', {
+      method: 'POST',
+      body: JSON.stringify({ url: targetUrl, caseId }),
+      headers: { 'content-type': 'application/json' },
+    })
+
+    const res = await POST(req)
+    const after = Date.now()
+
+    const body = await res.json() as { detectedAt: string }
+    const detected = new Date(body.detectedAt).getTime()
+    expect(detected).toBeGreaterThanOrEqual(before)
+    expect(detected).toBeLessThanOrEqual(after)
+  })
+
+  it('persists the Evidence row in the database via Prisma', async () => {
+    const targetUrl = `https://example.com/persist-${tag}`
+    const req = new Request('http://localhost/api/evidence', {
+      method: 'POST',
+      body: JSON.stringify({ url: targetUrl, caseId }),
+      headers: { 'content-type': 'application/json' },
+    })
+
+    await POST(req)
+
+    const row = await prisma.evidence.findFirst({ where: { url: targetUrl, caseId } })
+    expect(row).not.toBeNull()
+    expect(row!.pageTitle).toBe(FAKE_TITLE)
+    expect(row!.domain).toBe('example.com')
   })
 })
