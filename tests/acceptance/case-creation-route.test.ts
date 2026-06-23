@@ -1,57 +1,54 @@
-import { describe, it, expect } from 'vitest';
-import { vi } from 'vitest';
-import { POST } from '../../src/app/api/cases/route';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { POST } from '../../src/app/api/cases/route'
 
-vi.mock('../../src/lib/db', () => {
-  const createdRows: Array<{ id: string; identifyingTerms: string }> = [];
-  return {
-    prisma: {
-      case: {
-        create: vi.fn(async (args: { data: { identifyingTerms: string } }) => {
-          const row = { id: String(createdRows.length + 1), identifyingTerms: args.data.identifyingTerms };
-          createdRows.push(row);
-          return row;
-        }),
-        findMany: vi.fn(async () => createdRows),
-      },
+const mockCreate = vi.fn()
+const mockFindMany = vi.fn()
+
+vi.mock('../../src/lib/db', () => ({
+  prisma: {
+    case: {
+      create: mockCreate,
+      findMany: mockFindMany,
     },
-  };
-});
+  },
+}))
 
-describe('POST /api/cases route', () => {
-  it('persists identifying terms and returns 201', async () => {
-    const req = new Request('http://localhost/api/cases', {
-      method: 'POST',
-      body: JSON.stringify({ identifyingTerms: 'Jane Smith' }),
-      headers: { 'content-type': 'application/json' },
-    });
+const makeRequest = (body: unknown) =>
+  new Request('http://localhost/api/cases', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  })
 
-    const res = await POST(req);
-    expect(res.status).toBe(201);
+describe('POST /api/cases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
-    const body = await res.json() as { identifyingTerms: string };
-    expect(body.identifyingTerms).toBe('Jane Smith');
-  });
+  it('persists a new Case row when identifyingTerms is non-empty', async () => {
+    mockCreate.mockResolvedValue({ id: 1, identifyingTerms: 'Jane Smith 1990' })
 
-  it('returns 400 for empty identifyingTerms', async () => {
-    const req = new Request('http://localhost/api/cases', {
-      method: 'POST',
-      body: JSON.stringify({ identifyingTerms: '' }),
-      headers: { 'content-type': 'application/json' },
-    });
+    const res = await POST(makeRequest({ identifyingTerms: 'Jane Smith 1990' }))
 
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-  });
+    expect(res.status).toBe(201)
+    expect(mockCreate).toHaveBeenCalledWith({
+      data: { identifyingTerms: 'Jane Smith 1990' },
+    })
+    const json = await res.json() as { id: number; identifyingTerms: string }
+    expect(json.identifyingTerms).toBe('Jane Smith 1990')
+  })
 
-  it('returns 400 for whitespace-only identifyingTerms', async () => {
-    const req = new Request('http://localhost/api/cases', {
-      method: 'POST',
-      body: JSON.stringify({ identifyingTerms: '   ' }),
-      headers: { 'content-type': 'application/json' },
-    });
+  it('returns 400 and writes no row when identifyingTerms is empty string', async () => {
+    const res = await POST(makeRequest({ identifyingTerms: '' }))
 
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-  });
-});
+    expect(res.status).toBe(400)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 and writes no row when identifyingTerms is whitespace-only', async () => {
+    const res = await POST(makeRequest({ identifyingTerms: '   ' }))
+
+    expect(res.status).toBe(400)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+})
