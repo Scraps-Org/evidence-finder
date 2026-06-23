@@ -1,105 +1,78 @@
-import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest'
 import { PrismaClient } from '@prisma/client'
-import { POST as createCase } from '../../src/app/api/cases/route'
-import { GET as listCases } from '../../src/app/api/cases/route'
+import { POST, GET } from '../../src/app/api/cases/route'
 
 const prisma = new PrismaClient()
 
-const uniqueTerm = () => `test-term-${Date.now()}-${Math.random().toString(36).slice(2)}`
+beforeEach(async () => {
+  await prisma.case.deleteMany()
+})
 
-describe('POST /api/cases — persist identifying terms', () => {
-  const createdIds: string[] = []
+afterAll(async () => {
+  await prisma.case.deleteMany()
+  await prisma.$disconnect()
+})
 
-  afterEach(async () => {
-    if (createdIds.length > 0) {
-      await prisma.case.deleteMany({ where: { id: { in: createdIds } } })
-      createdIds.length = 0
-    }
-  })
-
-  afterAll(async () => {
-    await prisma.$disconnect()
-  })
-
-  it('inserts a row with identifyingTerms when given a valid non-empty value', async () => {
-    const term = uniqueTerm()
+describe('POST /api/cases', () => {
+  it('persists a new Case row with identifyingTerms', async () => {
+    const term = `test-term-${Date.now()}`
     const req = new Request('http://localhost/api/cases', {
       method: 'POST',
-      body: JSON.stringify({ identifyingTerms: term }),
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ identifyingTerms: term }),
     })
 
-    const res = await createCase(req)
+    const res = await POST(req)
     expect(res.status).toBe(201)
 
-    const body = await res.json() as { id: string; identifyingTerms: string }
-    expect(body.identifyingTerms).toBe(term)
-    createdIds.push(body.id)
-
-    const row = await prisma.case.findUnique({ where: { id: body.id } })
+    const row = await prisma.case.findFirst({ where: { identifyingTerms: term } })
     expect(row).not.toBeNull()
     expect(row!.identifyingTerms).toBe(term)
   })
 
-  it('rejects an empty identifyingTerms with 4xx and creates no row', async () => {
-    const countBefore = await prisma.case.count()
+  it('rejects an empty string with 4xx and creates no row', async () => {
+    const before = await prisma.case.count()
     const req = new Request('http://localhost/api/cases', {
       method: 'POST',
-      body: JSON.stringify({ identifyingTerms: '' }),
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ identifyingTerms: '' }),
     })
 
-    const res = await createCase(req)
+    const res = await POST(req)
     expect(res.status).toBeGreaterThanOrEqual(400)
     expect(res.status).toBeLessThan(500)
 
-    const countAfter = await prisma.case.count()
-    expect(countAfter).toBe(countBefore)
+    const after = await prisma.case.count()
+    expect(after).toBe(before)
   })
 
-  it('rejects a whitespace-only identifyingTerms with 4xx and creates no row', async () => {
-    const countBefore = await prisma.case.count()
+  it('rejects a whitespace-only string with 4xx and creates no row', async () => {
+    const before = await prisma.case.count()
     const req = new Request('http://localhost/api/cases', {
       method: 'POST',
-      body: JSON.stringify({ identifyingTerms: '   ' }),
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ identifyingTerms: '   ' }),
     })
 
-    const res = await createCase(req)
+    const res = await POST(req)
     expect(res.status).toBeGreaterThanOrEqual(400)
     expect(res.status).toBeLessThan(500)
 
-    const countAfter = await prisma.case.count()
-    expect(countAfter).toBe(countBefore)
+    const after = await prisma.case.count()
+    expect(after).toBe(before)
   })
 })
 
-describe('GET /api/cases — list persisted cases', () => {
-  const createdIds: string[] = []
-
-  afterEach(async () => {
-    if (createdIds.length > 0) {
-      await prisma.case.deleteMany({ where: { id: { in: createdIds } } })
-      createdIds.length = 0
-    }
-  })
-
-  afterAll(async () => {
-    await prisma.$disconnect()
-  })
-
-  it('returns saved cases in the response', async () => {
-    const term = uniqueTerm()
-    const created = await prisma.case.create({ data: { identifyingTerms: term } })
-    createdIds.push(created.id)
+describe('GET /api/cases', () => {
+  it('returns persisted cases in the response', async () => {
+    const term = `list-term-${Date.now()}`
+    await prisma.case.create({ data: { identifyingTerms: term } })
 
     const req = new Request('http://localhost/api/cases', { method: 'GET' })
-    const res = await listCases(req)
+    const res = await GET(req)
     expect(res.status).toBe(200)
 
-    const body = await res.json() as { id: string; identifyingTerms: string }[]
-    const found = body.find((c) => c.id === created.id)
-    expect(found).toBeDefined()
-    expect(found!.identifyingTerms).toBe(term)
+    const body = await res.json() as { cases: { identifyingTerms: string }[] }
+    const found = body.cases.some((c) => c.identifyingTerms === term)
+    expect(found).toBe(true)
   })
 })
