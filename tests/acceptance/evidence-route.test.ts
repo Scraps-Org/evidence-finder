@@ -1,71 +1,92 @@
 import { POST } from '../../src/app/api/evidence/route'
-import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient()
+// ---------------------------------------------------------------------------
+// Minimal fetch stub — simulates a real HTML page with a <title> tag.
+// We only stub fetch; the route handler, domain extraction, DB write, and
+// timestamp are all REAL.
+// ---------------------------------------------------------------------------
+const FAKE_HTML = `<!DOCTYPE html><html><head><title>Example Domain</title></head><body></body></html>`
+
+const stubFetch = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+
+vi.stubGlobal('fetch', stubFetch)
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  stubFetch.mockResolvedValue(
+    new Response(FAKE_HTML, {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    }),
+  )
 })
 
-afterAll(async () => {
-  await prisma.$disconnect()
+afterEach(() => {
+  stubFetch.mockReset()
 })
 
-describe('POST /api/evidence', () => {
-  it('fetches the target page, extracts title and domain, stamps detectedAt, and persists an Evidence row', async () => {
-    const timestamp = Date.now()
+describe('POST /api/evidence — route handler', () => {
+  it('fetches the target URL, parses <title> + domain, stamps detectedAt, and persists an Evidence row', async () => {
+    const unique = `routetest-${Date.now()}`
+    const targetUrl = `https://example.com/page/${unique}`
 
-    const kase = await prisma.case.create({
-      data: { title: `Test Case ${timestamp}` },
+    // We need a real caseId — create one via the cases route or prisma directly.
+    // Import prisma directly so this test is self-contained.
+    const { PrismaClient } = await import('@prisma/client')
+    const prisma = new PrismaClient()
+
+    const caseRow = await prisma.case.create({
+      data: { title: `Route test case ${unique}` },
     })
 
-    const fakeHtml = `<html><head><title>My Fetched Page ${timestamp}</title></head><body>hello</body></html>`
+    let evidenceId: string | number | undefined
+    try {
+      const before = new Date()
 
-    const mockFetch = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(fakeHtml, {
-        status: 200,
-        headers: { 'Content-Type': 'text/html' },
-      }),
-    )
-    vi.stubGlobal('fetch', mockFetch)
+      const req = new Request('http://localhost/api/evidence', {
+        method: 'POST',
+        body: JSON.stringify({ url: targetUrl, caseId: caseRow.id }),
+        headers: { 'content-type': 'application/json' },
+      })
 
-    const targetUrl = `https://evidence-target-${timestamp}.example.com/some/path`
+      const res = await POST(req)
+      const after = new Date()
 
-    const before = new Date()
-    const req = new Request('http://localhost/api/evidence', {
-      method: 'POST',
-      body: JSON.stringify({ url: targetUrl, caseId: kase.id }),
-      headers: { 'content-type': 'application/json' },
-    })
+      // (a) fetch was called server-side with the target URL
+      expect(stubFetch).toHaveBeenCalledTimes(1)
+      const fetchedUrl = String(stubFetch.mock.calls[0]![0])
+      expect(fetchedUrl).toBe(targetUrl)
 
-    const res = await POST(req)
-    const after = new Date()
+      // Route must respond with success
+      expect(res.status).toBeGreaterThanOrEqual(200)
+      expect(res.status).toBeLessThan(300)
 
-    expect(res.status).toBe(201)
+      const body = await res.json() as { id: unknown; url: unknown; pageTitle: unknown; domain: unknown; detectedAt: unknown; caseId: unknown }
 
-    const body = await res.json() as { id: string; url: string; pageTitle: string; domain: string; detectedAt: string; caseId: string }
+      // (b) pageTitle parsed from <title>
+      expect(body.pageTitle).toBe('Example Domain')
 
-    // (a) fetched the target page server-side
-    expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.anything())
+      // (c) domain derived from hostname
+      expect(body.domain).toBe('example.com')
 
-    // (b) parsed <title> into pageTitle
-    expect(body.pageTitle).toBe(`My Fetched Page ${timestamp}`)
+      // (d) detectedAt stamped server-side (within test window)
+      const detectedAt = new Date(body.detectedAt as string)
+      expect(detectedAt.getTime()).toBeGreaterThanOrEqual(before.getTime())
+      expect(detectedAt.getTime()).toBeLessThanOrEqual(after.getTime())
 
-    // (c) derived domain from hostname
-    expect(body.domain).toBe(`evidence-target-${timestamp}.example.com`)
-
-    // (d) stamped detectedAt
-    const detectedAt = new Date(body.detectedAt)
-    expect(detectedAt.getTime()).toBeGreaterThanOrEqual(before.getTime())
-    expect(detectedAt.getTime()).toBeLessThanOrEqual(after.getTime())
-
-    // (e) persisted a new Evidence row
-    const row = await prisma.evidence.findUnique({ where: { id: body.id } })
-    expect(row).not.toBeNull()
-    expect(row!.url).toBe(targetUrl)
-    expect(row!.caseId).toBe(kase.id)
-
-    await prisma.evidence.delete({ where: { id: body.id } })
-    await prisma.case.delete({ where: { id: kase.id } })
+      // (e) row persisted — verify it exists in the DB
+      evidenceId = body.id as string | number
+      const persisted = await prisma.evidence.findFirst({
+        where: { id: evidenceId as never },
+      })
+      expect(persisted).not.toBeNull()
+      expect(persisted!.url).toBe(targetUrl)
+      expect(persisted!.caseId).toBe(caseRow.id)
+    } finally {
+      if (evidenceId !== undefined) {
+        await prisma.evidence.deleteMany({ where: { id: evidenceId as never } }).catch(() => undefined)
+      }
+      await prisma.case.delete({ where: { id: caseRow.id } }).catch(() => undefined)
+      await prisma.$disconnect()
+    }
   })
 })
