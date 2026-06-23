@@ -1,48 +1,54 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "b9aae81dbe151a15477765f3adc224b3332dc99c",
-      "e08f67bb49c20a5fd21861ea07a876f7bbcf7faa"
+      "bf908020ad4463e3e572a4656131f5a84c3f8f96",
+      "66cb55ddcc673f7152917edde350ec45a25baf3f",
+      "a64741f55a66410582702848688654ef971a57bf"
     ]
   },
-  "base_ref": "951c4a3bb2058a5d01c0410083bbcbe24d9f73f1",
-  "code_integration_sha": "e6b8bf179df3383c46a42eeb45d40b30303cd68c",
+  "base_ref": "3d6ecbe4082051f7c6eabd9e20bd89b385dddf8a",
+  "code_integration_sha": "689df0bf36b4b73091d2b055253db3ea253a5ad5",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-e066e29c2db9",
-  "dispatch_id": "eval-evidence-finder-e066e29c2db9-a3",
+  "correlation_id": "eval-evidence-finder-d1077e00928e",
+  "dispatch_id": "eval-evidence-finder-d1077e00928e-a3",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-23T07:35:14.086783Z",
-  "goal_doc_sha": "e066e29c2db9",
-  "goal_id": "evidence-finder-e066e29c2db9",
-  "integration_branch": "scraps/goal/evidence-finder-e066e29c2db9",
+  "generated_at": "2026-06-23T12:02:52.854203Z",
+  "goal_doc_sha": "d1077e00928e",
+  "goal_id": "evidence-finder-d1077e00928e",
+  "integration_branch": "scraps/goal/evidence-finder-d1077e00928e",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "ffba1c24b2c09a6fb0b83ae93d2bf0b15e057300f0cda6cda23cecc7451ac61e"
+    "sha256": "341b0ed7e86c777916dc439e1841c028d32fa0358af9e922dfe6451b79544bab"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "prisma-case-foundation",
+        "name": "evidence-schema",
         "status": "green",
         "tier": "extended"
       },
       {
-        "name": "cases-api-route",
+        "name": "evidence-route",
+        "status": "green",
+        "tier": "extended"
+      },
+      {
+        "name": "evidence-list",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 2,
+    "merged_task_count": 3,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D2-case-input",
+      "criterion": "D3-manual-evidence",
       "how_measured": "deterministic_verification",
-      "observed": "verification_evidence (tasks: prisma-case-foundation, cases-api-route)"
+      "observed": "verification_evidence (tasks: evidence-schema, evidence-route, evidence-list)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -76,7 +82,27 @@
           "status": "passed"
         },
         {
+          "command": "pnpm exec prisma generate",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma validate",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/evidence-migration.test.ts",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
           "command": "pnpm exec vitest run tests/acceptance/case-migration.test.ts",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/case-route.test.ts",
           "exit_code": 0,
           "status": "passed"
         },
@@ -86,8 +112,8 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:prisma-case-foundation",
-      "name": "prisma-case-foundation",
+      "log_ref": "event:task.verification_evidence:evidence-schema",
+      "name": "evidence-schema",
       "status": "green",
       "tier": "extended"
     },
@@ -109,12 +135,22 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/acceptance/case-route.test.ts",
+          "command": "pnpm exec prisma generate",
           "exit_code": 0,
           "status": "passed"
         },
         {
-          "command": "pnpm build",
+          "command": "pnpm exec vitest run tests/acceptance/evidence-route.test.ts",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec tsc --noEmit",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec eslint src/app/api/evidence/route.ts",
           "exit_code": 0,
           "status": "passed"
         },
@@ -124,8 +160,51 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:cases-api-route",
-      "name": "cases-api-route",
+      "log_ref": "event:task.verification_evidence:evidence-route",
+      "name": "evidence-route",
+      "status": "green",
+      "tier": "extended"
+    },
+    {
+      "checks": [
+        {
+          "command": "pnpm install --frozen-lockfile",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma generate",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma migrate deploy",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/evidence-list.test.tsx",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec tsc --noEmit",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec eslint src/components/EvidenceList.tsx",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm run typecheck",
+          "exit_code": 0,
+          "status": "passed"
+        }
+      ],
+      "log_ref": "event:task.verification_evidence:evidence-list",
+      "name": "evidence-list",
       "status": "green",
       "tier": "extended"
     }
