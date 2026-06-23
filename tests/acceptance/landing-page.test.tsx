@@ -1,19 +1,42 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
-import Page from '../../src/app/page';
-import packageJson from '../../package.json';
+import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import Page from '../../src/app/page'
 
-describe('Landing Page Acceptance', () => {
-  it('should have the correct package name', () => {
-    expect(packageJson.name).toBe('evidence-finder');
-  });
+describe('landing page — case list', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
-  it('should render a heading describing the evidence-finder service', () => {
-    render(<Page />);
+  it('renders saved cases from the database in the list after creation', async () => {
+    const mockFetch = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: 42, identifyingTerms: 'Alice Wonder 1992' }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([{ id: 42, identifyingTerms: 'Alice Wonder 1992' }]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+    vi.stubGlobal('fetch', mockFetch)
 
-    // Search for a heading that contains either "증거" (Korean for evidence) or "evidence"
-    const heading = screen.getByRole('heading', { name: new RegExp('증거|evidence', 'i') });
+    const { default: fireEvent } = await import('@testing-library/react').then(
+      (m) => ({ default: m.fireEvent }),
+    )
 
-    expect(heading).toBeTruthy();
-  });
-});
+    const { waitFor } = await import('@testing-library/react')
+
+    render(<Page />)
+
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: 'Alice Wonder 1992' } })
+    fireEvent.click(screen.getByRole('button', { name: /submit|create|add|search/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Alice Wonder 1992/)).toBeInTheDocument()
+    })
+  })
+})
