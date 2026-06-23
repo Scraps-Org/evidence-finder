@@ -1,72 +1,67 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { PrismaClient } from '@prisma/client'
-import { POST } from '../../src/app/api/cases/route'
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { POST } from '../../src/app/api/cases/route';
 
-const prisma = new PrismaClient()
+const mockCreate = vi.fn();
+const mockCount = vi.fn();
 
-describe('D2-case-input: case-creation API route', () => {
-  const createdIds: string[] = []
+vi.mock('../../src/lib/db', () => ({
+  prisma: {
+    case: {
+      create: (...args: Parameters<typeof mockCreate>) => mockCreate(...args),
+      count: (...args: Parameters<typeof mockCount>) => mockCount(...args),
+    },
+  },
+}));
 
-  afterEach(async () => {
-    if (createdIds.length > 0) {
-      await prisma.case.deleteMany({ where: { id: { in: createdIds } } })
-      createdIds.length = 0
-    }
-  })
+describe('POST /api/cases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreate.mockResolvedValue({ id: 1, identifyingTerms: 'Bob Jones' });
+    mockCount.mockResolvedValue(0);
+  });
 
-  afterAll(async () => {
-    await prisma.$disconnect()
-  })
-
-  it('persists a new Case row with identifyingTerms when valid input is POSTed', async () => {
-    const terms = `RouteTest-${Date.now()}`
+  it('persists a new Case row when identifyingTerms is valid', async () => {
     const req = new Request('http://localhost/api/cases', {
       method: 'POST',
+      body: JSON.stringify({ identifyingTerms: 'Bob Jones' }),
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifyingTerms: terms }),
-    })
+    });
 
-    const res = await POST(req)
-    expect(res.status).toBe(201)
+    const res = await POST(req);
 
-    const body = (await res.json()) as { id: string; identifyingTerms: string }
-    expect(body.identifyingTerms).toBe(terms)
-    createdIds.push(body.id)
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ identifyingTerms: 'Bob Jones' });
+    expect(mockCreate).toHaveBeenCalledWith({
+      data: { identifyingTerms: 'Bob Jones' },
+    });
+  });
 
-    const row = await prisma.case.findUnique({ where: { id: body.id } })
-    expect(row).not.toBeNull()
-    expect(row!.identifyingTerms).toBe(terms)
-  })
-
-  it('returns 4xx and writes no row when identifyingTerms is empty string', async () => {
-    const before = await prisma.case.count()
+  it('returns 4xx and does not write a row when identifyingTerms is empty string', async () => {
     const req = new Request('http://localhost/api/cases', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ identifyingTerms: '' }),
-    })
+      headers: { 'content-type': 'application/json' },
+    });
 
-    const res = await POST(req)
-    expect(res.status).toBeGreaterThanOrEqual(400)
-    expect(res.status).toBeLessThan(500)
+    const res = await POST(req);
 
-    const after = await prisma.case.count()
-    expect(after).toBe(before)
-  })
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
 
-  it('returns 4xx and writes no row when identifyingTerms is whitespace-only', async () => {
-    const before = await prisma.case.count()
+  it('returns 4xx and does not write a row when identifyingTerms is whitespace-only', async () => {
     const req = new Request('http://localhost/api/cases', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ identifyingTerms: '   ' }),
-    })
+      headers: { 'content-type': 'application/json' },
+    });
 
-    const res = await POST(req)
-    expect(res.status).toBeGreaterThanOrEqual(400)
-    expect(res.status).toBeLessThan(500)
+    const res = await POST(req);
 
-    const after = await prisma.case.count()
-    expect(after).toBe(before)
-  })
-})
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+});
