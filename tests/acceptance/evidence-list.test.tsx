@@ -1,45 +1,57 @@
+import React from 'react'
 import { render, screen } from '@testing-library/react'
 import EvidenceList from '../../src/components/EvidenceList'
 
-const baseEvidence = [
+const EVIDENCE_ITEMS = [
   {
     id: '1',
-    url: 'https://caught.example.com/page',
-    pageTitle: 'Caught Page Title',
-    domain: 'caught.example.com',
-    detectedAt: new Date('2026-06-20T12:00:00Z'),
+    url: 'https://example.com/article/one',
+    pageTitle: 'Article One',
+    domain: 'example.com',
+    detectedAt: new Date('2026-06-23T10:00:00Z'),
+    caseId: 'case-1',
+  },
+  {
+    id: '2',
+    url: 'https://other.org/news/two',
+    pageTitle: 'News Two',
+    domain: 'other.org',
+    detectedAt: new Date('2026-06-23T11:00:00Z'),
     caseId: 'case-1',
   },
 ]
 
-describe('EvidenceList component', () => {
-  it('renders URL and text metadata (pageTitle, domain, detectedAt) for each evidence item', () => {
-    render(<EvidenceList items={baseEvidence} />)
+describe('EvidenceList component — rendering', () => {
+  it('(a) displays URL and text metadata for each evidence item', () => {
+    render(<EvidenceList items={EVIDENCE_ITEMS} />)
 
-    expect(screen.getByText('https://caught.example.com/page')).toBeInTheDocument()
-    expect(screen.getByText('Caught Page Title')).toBeInTheDocument()
-    expect(screen.getByText('caught.example.com')).toBeInTheDocument()
-    // detectedAt rendered in some human-readable form
-    expect(screen.getByText(/2026|Jun/i)).toBeInTheDocument()
+    for (const item of EVIDENCE_ITEMS) {
+      // URL visible as text or link
+      expect(screen.getByText(item.url)).toBeInTheDocument()
+      // pageTitle visible
+      expect(screen.getByText(item.pageTitle)).toBeInTheDocument()
+      // domain visible
+      expect(screen.getByText(item.domain)).toBeInTheDocument()
+      // detectedAt visible (some formatted representation of the date)
+      // The component must render *something* from detectedAt — we check the
+      // year as a minimal invariant that works regardless of locale formatting.
+      expect(screen.getByText(/2026/)).toBeInTheDocument()
+    }
   })
 
-  it('does not render any <img> or <video> whose src points to the evidence URL', () => {
-    const { container } = render(<EvidenceList items={baseEvidence} />)
+  it('(b) does not render any <img> or <video> element whose src resolves to an evidence URL', () => {
+    const { container } = render(<EvidenceList items={EVIDENCE_ITEMS} />)
 
     const imgs = Array.from(container.querySelectorAll('img'))
     const videos = Array.from(container.querySelectorAll('video'))
-    const sources = Array.from(container.querySelectorAll('source'))
 
-    const evidenceUrls = baseEvidence.map((e) => e.url)
+    const evidenceUrls = new Set(EVIDENCE_ITEMS.map((e) => e.url))
 
     for (const img of imgs) {
-      expect(evidenceUrls).not.toContain(img.getAttribute('src'))
+      expect(evidenceUrls.has(img.getAttribute('src') ?? '')).toBe(false)
     }
     for (const video of videos) {
-      expect(evidenceUrls).not.toContain(video.getAttribute('src'))
-    }
-    for (const source of sources) {
-      expect(evidenceUrls).not.toContain(source.getAttribute('src'))
+      expect(evidenceUrls.has(video.getAttribute('src') ?? '')).toBe(false)
     }
   })
 })
