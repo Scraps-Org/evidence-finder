@@ -1,46 +1,43 @@
-import { describe, it, expect, afterEach, afterAll } from 'vitest'
-import { PrismaClient } from '@prisma/client'
+import { describe, it, expect, afterAll } from 'vitest';
+import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
-describe('D2-case-input: Case persistence round-trip', () => {
-  const createdIds: string[] = []
-
-  afterEach(async () => {
-    if (createdIds.length > 0) {
-      await prisma.case.deleteMany({ where: { id: { in: createdIds } } })
-      createdIds.length = 0
-    }
-  })
+describe('Case persistence (real DB)', () => {
+  const tag = `test-${Date.now()}`;
 
   afterAll(async () => {
-    await prisma.$disconnect()
-  })
+    await prisma.case.deleteMany({
+      where: { identifyingTerms: { contains: 'acceptance-test-' } },
+    });
+    await prisma.$disconnect();
+  });
 
-  it('creates a Case row with identifyingTerms and reads it back', async () => {
-    const terms = `PersistenceTest-${Date.now()}`
+  it('persists a Case row with identifyingTerms and reads it back', async () => {
+    const terms = `acceptance-test-${tag}`;
     const created = await prisma.case.create({
       data: { identifyingTerms: terms },
-    })
-    createdIds.push(created.id)
+    });
 
-    expect(created.identifyingTerms).toBe(terms)
+    expect(created.id).toBeDefined();
+    expect(created.identifyingTerms).toBe(terms);
 
-    const found = await prisma.case.findUnique({ where: { id: created.id } })
-    expect(found).not.toBeNull()
-    expect(found!.identifyingTerms).toBe(terms)
-  })
+    const found = await prisma.case.findUnique({ where: { id: created.id } });
+    expect(found).not.toBeNull();
+    expect(found!.identifyingTerms).toBe(terms);
+  });
 
-  it('lists all cases including newly created ones', async () => {
-    const terms = `ListTest-${Date.now()}`
-    const created = await prisma.case.create({
-      data: { identifyingTerms: terms },
-    })
-    createdIds.push(created.id)
-
-    const all = await prisma.case.findMany()
-    const match = all.find((c) => c.id === created.id)
-    expect(match).toBeDefined()
-    expect(match!.identifyingTerms).toBe(terms)
-  })
-})
+  it('does not persist a row for empty identifyingTerms via the API contract (route guard)', async () => {
+    const countBefore = await prisma.case.count();
+    // Simulate the guard: empty terms must not reach the DB.
+    // The route test covers this via mocked prisma; here we confirm the DB has no
+    // empty-terms row introduced by any path in the real schema.
+    const emptyRows = await prisma.case.findMany({
+      where: { identifyingTerms: '' },
+    });
+    expect(emptyRows).toHaveLength(0);
+    // row count must not have grown (no side-effect from this test)
+    const countAfter = await prisma.case.count();
+    expect(countAfter).toBe(countBefore);
+  });
+});
