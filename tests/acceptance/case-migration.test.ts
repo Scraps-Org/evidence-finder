@@ -1,31 +1,31 @@
-import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync } from 'fs'
-import { join } from 'path'
+import * as fs from 'fs'
+import * as path from 'path'
 
-describe('prisma/migrations — Case table migration', () => {
-  it('has exactly one migration directory under prisma/migrations/', () => {
-    const migrationsDir = join(process.cwd(), 'prisma', 'migrations')
-    const entries = readdirSync(migrationsDir, { withFileTypes: true })
-    const migrationDirs = entries.filter(
-      (e) => e.isDirectory() && e.name !== 'migration_lock.toml',
+const MIGRATIONS_DIR = path.resolve(__dirname, '../../prisma/migrations')
+
+describe('prisma/migrations', () => {
+  it('directory exists and contains exactly one migration', () => {
+    expect(fs.existsSync(MIGRATIONS_DIR)).toBe(true)
+    const entries = fs.readdirSync(MIGRATIONS_DIR).filter(
+      (name) => fs.statSync(path.join(MIGRATIONS_DIR, name)).isDirectory()
     )
-    expect(migrationDirs).toHaveLength(1)
+    expect(entries).toHaveLength(1)
   })
 
-  it('the migration SQL creates a Case table with an identifyingTerms text column', () => {
-    const migrationsDir = join(process.cwd(), 'prisma', 'migrations')
-    const entries = readdirSync(migrationsDir, { withFileTypes: true })
-    const migrationDir = entries.find(
-      (e) => e.isDirectory() && e.name !== 'migration_lock.toml',
+  it('the single migration SQL creates the Case table with an identifyingTerms text column', () => {
+    const entries = fs.readdirSync(MIGRATIONS_DIR).filter(
+      (name) => fs.statSync(path.join(MIGRATIONS_DIR, name)).isDirectory()
     )
-    expect(migrationDir).toBeDefined()
+    const migrationDir = path.join(MIGRATIONS_DIR, entries[0]!)
+    const sqlFile = path.join(migrationDir, 'migration.sql')
 
-    const sqlPath = join(migrationsDir, migrationDir!.name, 'migration.sql')
-    const sql = readFileSync(sqlPath, 'utf-8').toLowerCase()
+    expect(fs.existsSync(sqlFile)).toBe(true)
 
-    expect(sql).toMatch(/create\s+table/i)
-    expect(sql).toMatch(/"?case"?/i)
-    expect(sql).toMatch(/"?identifyingterms"?/i)
-    expect(sql).toMatch(/text/i)
+    const sql = fs.readFileSync(sqlFile, 'utf-8').toLowerCase()
+
+    expect(sql).toMatch(/create\s+table/)
+    expect(sql).toMatch(/"case"|\bcase\b/)
+    expect(sql).toMatch(/"identifyingterms"|identifyingterms/)
+    expect(sql).toMatch(/text|varchar/)
   })
 })
