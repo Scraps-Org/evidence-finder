@@ -1,43 +1,42 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { vi, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { PrismaClient } from '@prisma/client';
 import CaseList from '../../src/components/CaseList';
 
-describe('Case List — D2-case-input', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+const prisma = new PrismaClient();
+
+describe('Case List Component', () => {
+  beforeEach(async () => {
+    await prisma.case.deleteMany({});
   });
 
-  it('displays saved case with identifying terms after creation', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue([
-        { id: '1', identifyingTerms: 'Jane Smith', createdAt: new Date().toISOString() },
-      ]),
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    render(<CaseList />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Jane Smith/)).toBeInTheDocument();
-    });
+  afterEach(async () => {
+    await prisma.case.deleteMany({});
   });
 
-  it('renders multiple cases with their identifying terms', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue([
-        { id: '1', identifyingTerms: 'Alice Johnson', createdAt: new Date().toISOString() },
-        { id: '2', identifyingTerms: 'Bob Wilson', createdAt: new Date().toISOString() },
-      ]),
+  it('displays a saved case with identifying terms in the list', async () => {
+    const terms = `test-case-${Date.now()}`;
+    await prisma.case.create({
+      data: { identifyingTerms: terms },
     });
-    vi.stubGlobal('fetch', mockFetch);
 
-    render(<CaseList />);
+    const component = await CaseList();
+    render(component);
 
-    await waitFor(() => {
-      expect(screen.getByText(/Alice Johnson/)).toBeInTheDocument();
-      expect(screen.getByText(/Bob Wilson/)).toBeInTheDocument();
-    });
+    expect(screen.getByText(terms)).toBeInTheDocument();
+  });
+
+  it('displays multiple cases in the list', async () => {
+    const terms1 = `case-one-${Date.now()}`;
+    const terms2 = `case-two-${Date.now()}`;
+
+    await prisma.case.create({ data: { identifyingTerms: terms1 } });
+    await prisma.case.create({ data: { identifyingTerms: terms2 } });
+
+    const component = await CaseList();
+    render(component);
+
+    expect(screen.getByText(terms1)).toBeInTheDocument();
+    expect(screen.getByText(terms2)).toBeInTheDocument();
   });
 });
