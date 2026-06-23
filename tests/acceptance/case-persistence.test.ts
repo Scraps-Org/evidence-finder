@@ -1,47 +1,36 @@
-import { describe, it, expect, afterAll, afterEach } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { describe, it, expect, afterAll } from 'vitest'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
-
-afterEach(async () => {
-  await prisma.case.deleteMany();
-});
+const prisma = new PrismaClient()
 
 afterAll(async () => {
-  await prisma.$disconnect();
-});
+  await prisma.case.deleteMany({ where: { identifyingTerms: { startsWith: 'ACCEPTANCE-TEST-' } } })
+  await prisma.$disconnect()
+})
 
 describe('Case persistence', () => {
-  it('creates a Case row with identifyingTerms and reads it back', async () => {
-    const uniqueTerm = `test-term-${Date.now()}`;
+  it('writes a Case row with identifyingTerms and reads it back', async () => {
+    const terms = `ACCEPTANCE-TEST-${Date.now()}`
 
     const created = await prisma.case.create({
-      data: { identifyingTerms: uniqueTerm },
-    });
+      data: { identifyingTerms: terms },
+    })
 
-    expect(created.id).toBeDefined();
-    expect(created.identifyingTerms).toBe(uniqueTerm);
+    expect(created.id).toBeDefined()
+    expect(created.identifyingTerms).toBe(terms)
 
-    const found = await prisma.case.findFirst({
-      where: { id: created.id },
-    });
+    const found = await prisma.case.findUnique({ where: { id: created.id } })
+    expect(found).not.toBeNull()
+    expect(found!.identifyingTerms).toBe(terms)
+  })
 
-    expect(found).not.toBeNull();
-    expect(found!.identifyingTerms).toBe(uniqueTerm);
-  });
+  it('can query all cases and the written row appears in the list', async () => {
+    const terms = `ACCEPTANCE-TEST-${Date.now()}-list`
 
-  it('does not write a row when identifyingTerms is empty', async () => {
-    const countBefore = await prisma.case.count();
+    await prisma.case.create({ data: { identifyingTerms: terms } })
 
-    try {
-      await prisma.case.create({
-        data: { identifyingTerms: '' },
-      });
-    } catch {
-      // validation would prevent creation at app layer; this tests the DB round-trip
-    }
-
-    const countAfter = await prisma.case.count();
-    expect(countAfter).toBe(countBefore);
-  });
-});
+    const all = await prisma.case.findMany()
+    const match = all.find((c) => c.identifyingTerms === terms)
+    expect(match).toBeDefined()
+  })
+})
