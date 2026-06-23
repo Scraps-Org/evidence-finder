@@ -1,50 +1,46 @@
-import { describe, it, expect, afterAll, afterEach } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { describe, it, expect, afterEach, afterAll } from 'vitest'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL } },
-});
+const prisma = new PrismaClient()
 
-afterEach(async () => {
-  await prisma.case.deleteMany({
-    where: { identifyingTerms: { startsWith: '__test__' } },
-  });
-});
+describe('D2-case-input: Case persistence round-trip', () => {
+  const createdIds: string[] = []
 
-afterAll(async () => {
-  await prisma.$disconnect();
-});
+  afterEach(async () => {
+    if (createdIds.length > 0) {
+      await prisma.case.deleteMany({ where: { id: { in: createdIds } } })
+      createdIds.length = 0
+    }
+  })
 
-describe('Case persistence', () => {
-  it('persists a Case row with identifyingTerms and reads it back', async () => {
-    const uniqueTerm = `__test__Alice_${Date.now()}`;
+  afterAll(async () => {
+    await prisma.$disconnect()
+  })
 
+  it('creates a Case row with identifyingTerms and reads it back', async () => {
+    const terms = `PersistenceTest-${Date.now()}`
     const created = await prisma.case.create({
-      data: { identifyingTerms: uniqueTerm },
-    });
+      data: { identifyingTerms: terms },
+    })
+    createdIds.push(created.id)
 
-    expect(created.id).toBeDefined();
-    expect(created.identifyingTerms).toBe(uniqueTerm);
+    expect(created.identifyingTerms).toBe(terms)
 
-    const found = await prisma.case.findFirst({
-      where: { id: created.id },
-    });
+    const found = await prisma.case.findUnique({ where: { id: created.id } })
+    expect(found).not.toBeNull()
+    expect(found!.identifyingTerms).toBe(terms)
+  })
 
-    expect(found).not.toBeNull();
-    expect(found!.identifyingTerms).toBe(uniqueTerm);
-  });
+  it('lists all cases including newly created ones', async () => {
+    const terms = `ListTest-${Date.now()}`
+    const created = await prisma.case.create({
+      data: { identifyingTerms: terms },
+    })
+    createdIds.push(created.id)
 
-  it('the case list query returns persisted rows including identifyingTerms', async () => {
-    const uniqueTerm = `__test__Bob_${Date.now()}`;
-
-    await prisma.case.create({ data: { identifyingTerms: uniqueTerm } });
-
-    const cases = await prisma.case.findMany({
-      where: { identifyingTerms: { startsWith: '__test__' } },
-    });
-
-    const match = cases.find((c) => c.identifyingTerms === uniqueTerm);
-    expect(match).toBeDefined();
-    expect(match!.identifyingTerms).toBe(uniqueTerm);
-  });
-});
+    const all = await prisma.case.findMany()
+    const match = all.find((c) => c.id === created.id)
+    expect(match).toBeDefined()
+    expect(match!.identifyingTerms).toBe(terms)
+  })
+})
