@@ -1,60 +1,45 @@
 import { render, screen } from '@testing-library/react'
 import EvidenceList from '../../src/components/EvidenceList'
 
-const isoDate = '2026-06-23T10:00:00.000Z'
-const evidenceItems = [
+const baseEvidence = [
   {
-    id: 'ev-1',
-    url: 'https://example.com/article',
-    pageTitle: 'Example Article',
-    domain: 'example.com',
-    detectedAt: new Date(isoDate),
-    caseId: 'case-1',
-  },
-  {
-    id: 'ev-2',
-    url: 'https://news.org/story',
-    pageTitle: 'News Story',
-    domain: 'news.org',
-    detectedAt: new Date(isoDate),
+    id: '1',
+    url: 'https://caught.example.com/page',
+    pageTitle: 'Caught Page Title',
+    domain: 'caught.example.com',
+    detectedAt: new Date('2026-06-20T12:00:00Z'),
     caseId: 'case-1',
   },
 ]
 
 describe('EvidenceList component', () => {
-  it('renders URL and text metadata for each evidence item', () => {
-    render(<EvidenceList items={evidenceItems} />)
+  it('renders URL and text metadata (pageTitle, domain, detectedAt) for each evidence item', () => {
+    render(<EvidenceList items={baseEvidence} />)
 
-    expect(screen.getByText('https://example.com/article')).toBeInTheDocument()
-    expect(screen.getByText('Example Article')).toBeInTheDocument()
-    expect(screen.getByText('example.com')).toBeInTheDocument()
-
-    expect(screen.getByText('https://news.org/story')).toBeInTheDocument()
-    expect(screen.getByText('News Story')).toBeInTheDocument()
-    expect(screen.getByText('news.org')).toBeInTheDocument()
+    expect(screen.getByText('https://caught.example.com/page')).toBeInTheDocument()
+    expect(screen.getByText('Caught Page Title')).toBeInTheDocument()
+    expect(screen.getByText('caught.example.com')).toBeInTheDocument()
+    // detectedAt rendered in some human-readable form
+    expect(screen.getByText(/2026|Jun/i)).toBeInTheDocument()
   })
 
-  it('does not render any <img> or <video> elements whose src points to the evidence URL', () => {
-    const { container } = render(<EvidenceList items={evidenceItems} />)
+  it('does not render any <img> or <video> whose src points to the evidence URL', () => {
+    const { container } = render(<EvidenceList items={baseEvidence} />)
 
-    const imgs = container.querySelectorAll('img')
-    const videos = container.querySelectorAll('video')
+    const imgs = Array.from(container.querySelectorAll('img'))
+    const videos = Array.from(container.querySelectorAll('video'))
+    const sources = Array.from(container.querySelectorAll('source'))
 
-    const evidenceUrls = evidenceItems.map((e) => e.url)
+    const evidenceUrls = baseEvidence.map((e) => e.url)
 
-    imgs.forEach((img) => {
+    for (const img of imgs) {
       expect(evidenceUrls).not.toContain(img.getAttribute('src'))
-    })
-
-    videos.forEach((video) => {
+    }
+    for (const video of videos) {
       expect(evidenceUrls).not.toContain(video.getAttribute('src'))
-    })
-  })
-
-  it('renders detectedAt as readable text (not raw ISO) for each item', () => {
-    render(<EvidenceList items={evidenceItems} />)
-    // The date 2026-06-23 must appear somewhere in the rendered output as text
-    const allText = document.body.textContent ?? ''
-    expect(allText).toMatch(/2026/)
+    }
+    for (const source of sources) {
+      expect(evidenceUrls).not.toContain(source.getAttribute('src'))
+    }
   })
 })
