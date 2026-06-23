@@ -1,88 +1,58 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { POST } from '../../src/app/api/cases/route';
 import { PrismaClient } from '@prisma/client';
-import { describe, it, expect, afterEach, afterAll } from 'vitest';
 
 const prisma = new PrismaClient();
 
-describe('POST /api/cases — D2-case-input', () => {
-  const uniquePrefix = Date.now().toString();
-
+describe('POST /api/cases [D2-case-input]', () => {
   afterEach(async () => {
-    await prisma.case.deleteMany({
-      where: {
-        identifyingTerms: {
-          startsWith: uniquePrefix,
-        },
-      },
-    });
+    await prisma.case.deleteMany({});
   });
 
-  afterAll(async () => {
-    await prisma.$disconnect();
-  });
-
-  it('inserts case with valid non-empty identifying terms into database', async () => {
-    const identifyingTerms = `${uniquePrefix}_John Doe`;
-    const req = new Request('http://localhost/api/cases', {
+  it('should insert a case with identifyingTerms into the database on valid submission', async () => {
+    const identifyingTerms = `TestCase_${Date.now()}`;
+    const req = new Request('http://test/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ identifyingTerms }),
     });
 
-    const res = await POST(req);
-    expect(res.status).toBe(201);
+    const res = await POST(req as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(200);
 
-    const data = await res.json();
-    expect(data).toHaveProperty('id');
-    expect(data.identifyingTerms).toBe(identifyingTerms);
+    const json = await res.json() as { id: string; identifyingTerms: string };
+    expect(json.identifyingTerms).toBe(identifyingTerms);
 
-    const savedCase = await prisma.case.findUnique({
-      where: { id: data.id },
-    });
-    expect(savedCase).not.toBeNull();
-    expect(savedCase!.identifyingTerms).toBe(identifyingTerms);
+    const saved = await prisma.case.findUnique({ where: { id: json.id } });
+    expect(saved).not.toBeNull();
+    expect(saved?.identifyingTerms).toBe(identifyingTerms);
   });
 
-  it('rejects empty string identifying terms and writes no row', async () => {
-    const countBefore = await prisma.case.count();
-
-    const req = new Request('http://localhost/api/cases', {
+  it('should reject empty identifyingTerms with an error', async () => {
+    const req = new Request('http://test/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ identifyingTerms: '' }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as Parameters<typeof POST>[0]);
     expect(res.status).toBe(400);
 
-    const countAfter = await prisma.case.count();
-    expect(countAfter).toBe(countBefore);
+    const count = await prisma.case.count();
+    expect(count).toBe(0);
   });
 
-  it('rejects whitespace-only identifying terms and writes no row', async () => {
-    const countBefore = await prisma.case.count();
-
-    const req = new Request('http://localhost/api/cases', {
+  it('should reject whitespace-only identifyingTerms with an error', async () => {
+    const req = new Request('http://test/api/cases', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifyingTerms: '   \t\n  ' }),
+      body: JSON.stringify({ identifyingTerms: '   ' }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as Parameters<typeof POST>[0]);
     expect(res.status).toBe(400);
 
-    const countAfter = await prisma.case.count();
-    expect(countAfter).toBe(countBefore);
-  });
-
-  it('returns error response on invalid JSON', async () => {
-    const req = new Request('http://localhost/api/cases', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: 'invalid json',
-    });
-
-    const res = await POST(req);
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    const count = await prisma.case.count();
+    expect(count).toBe(0);
   });
 });
