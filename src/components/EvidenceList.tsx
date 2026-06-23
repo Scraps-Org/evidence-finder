@@ -1,24 +1,24 @@
-`use client`
+`use client`;
 
-import React from 'react'
+import React from 'react';
 
 interface EvidenceItem {
-  id: string
-  url: string
-  pageTitle: string
-  domain: string
-  detectedAt: Date | string
-  caseId: string
+  id: string;
+  url: string;
+  pageTitle: string;
+  domain: string;
+  detectedAt: Date | string;
+  caseId: string;
 }
 
 interface EvidenceListProps {
-  items: EvidenceItem[]
+  items: EvidenceItem[];
 }
 
 const EvidenceList: React.FC<EvidenceListProps> = ({ items }) => {
-  const years = items.map((item) => new Date(item.detectedAt).getFullYear())
-  const uniqueYears = [...new Set(years)]
-  
+  const years = items.map((item) => new Date(item.detectedAt).getFullYear());
+  const uniqueYears = [...new Set(years)];
+
   return (
     <div>
       {items.map((item) => (
@@ -30,7 +30,7 @@ const EvidenceList: React.FC<EvidenceListProps> = ({ items }) => {
       ))}
       <p>{uniqueYears.join(', ')}</p>
     </div>
-  )
-}
+  );
+};
 
-export default EvidenceList
+export default EvidenceList;
