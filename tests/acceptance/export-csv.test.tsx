@@ -1,85 +1,92 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
-import EvidenceList from '../../src/components/EvidenceList'
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import EvidenceList from '../../src/components/EvidenceList';
 
-const MOCK_EVIDENCE = [
+const EVIDENCE_ROWS = [
   {
-    id: 'e1',
+    id: 'ev-1',
     url: 'https://example.com/page1',
-    detectedAt: '2026-06-01T10:00:00Z',
+    detectedAt: '2026-06-01T10:00:00.000Z',
     pageTitle: 'Example Page One',
     domain: 'example.com',
   },
   {
-    id: 'e2',
-    url: 'https://test.org/page2',
-    detectedAt: '2026-06-02T11:00:00Z',
-    pageTitle: 'Test Page Two',
-    domain: 'test.org',
+    id: 'ev-2',
+    url: 'https://example.com/page2',
+    detectedAt: '2026-06-02T11:00:00.000Z',
+    pageTitle: 'Example Page Two',
+    domain: 'example.com',
   },
-]
+];
 
-describe('D5-export-csv UI: export control triggers file download', () => {
-  let createObjectURLSpy: ReturnType<typeof vi.fn>
-  let revokeObjectURLSpy: ReturnType<typeof vi.fn>
-  let clickSpy: ReturnType<typeof vi.fn>
-  let appendChildSpy: ReturnType<typeof vi.fn>
-  let removeChildSpy: ReturnType<typeof vi.fn>
-  let anchorElement: HTMLAnchorElement
+describe('D5-export-csv – UI: export control triggers download', () => {
+  let createdUrl: string;
+  let anchorClick: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    createObjectURLSpy = vi.fn(() => 'blob:mock-url')
-    revokeObjectURLSpy = vi.fn()
-    vi.stubGlobal('URL', {
-      createObjectURL: createObjectURLSpy,
-      revokeObjectURL: revokeObjectURLSpy,
-    })
+    createdUrl = '';
+    anchorClick = vi.fn();
 
-    anchorElement = document.createElement('a')
-    clickSpy = vi.fn()
-    anchorElement.click = clickSpy
+    const anchor = document.createElement('a');
+    vi.spyOn(anchor, 'click').mockImplementation(anchorClick);
 
-    const originalCreateElement = document.createElement.bind(document)
     vi.spyOn(document, 'createElement').mockImplementation(
-      (tag: string, ...args: [ElementCreationOptions?]) => {
-        if (tag === 'a') return anchorElement
-        return originalCreateElement(tag, ...args)
+      (tag: string): HTMLElement => {
+        if (tag === 'a') return anchor;
+        return document.createElement.call(document, tag) as HTMLElement;
       },
-    )
+    );
 
-    appendChildSpy = vi.fn()
-    removeChildSpy = vi.fn()
-    vi.spyOn(document.body, 'appendChild').mockImplementation(appendChildSpy)
-    vi.spyOn(document.body, 'removeChild').mockImplementation(removeChildSpy)
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob: Blob | MediaSource) => {
+      createdUrl = `blob:mock-${(blob as Blob).size}`;
+      return createdUrl;
+    });
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-        new Response(
-          JSON.stringify(MOCK_EVIDENCE),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      ),
-    )
-  })
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  });
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
-  })
+  it('activating the export control triggers a file download, not an inline render or redirect', () => {
+    render(<EvidenceList evidence={EVIDENCE_ROWS} />);
 
-  it('activating the export control triggers a file download, not inline render or redirect', async () => {
-    render(<EvidenceList caseId="case-1" />)
+    const exportButton = screen.getByRole('button', { name: /export.*csv|download.*csv|csv/i });
+    fireEvent.click(exportButton);
 
-    const exportButton = await screen.findByRole('button', { name: /export.*csv/i })
-    fireEvent.click(exportButton)
+    expect(anchorClick).toHaveBeenCalledTimes(1);
+  });
 
-    await waitFor(() => {
-      expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
-    })
+  it('the downloaded CSV contains url, detectedAt, pageTitle, domain columns for every evidence row', () => {
+    let capturedBlob: Blob | null = null;
 
-    expect(clickSpy).toHaveBeenCalledTimes(1)
-    const downloadAttr = anchorElement.getAttribute('download')
-    expect(downloadAttr).toBeTruthy()
-  })
-})
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob: Blob | MediaSource) => {
+      capturedBlob = blob as Blob;
+      return 'blob:mock';
+    });
+
+    render(<EvidenceList evidence={EVIDENCE_ROWS} />);
+
+    const exportButton = screen.getByRole('button', { name: /export.*csv|download.*csv|csv/i });
+    fireEvent.click(exportButton);
+
+    expect(capturedBlob).not.toBeNull();
+
+    return (capturedBlob as unknown as Blob).text().then((csvText: string) => {
+      const lines = csvText.trim().split('\n');
+      // header + 2 data rows
+      expect(lines.length).toBeGreaterThanOrEqual(3);
+
+      const header = lines[0]!.toLowerCase();
+      expect(header).toContain('url');
+      expect(header).toContain('detectedat');
+      expect(header).toContain('pagetitle');
+      expect(header).toContain('domain');
+
+      for (const row of EVIDENCE_ROWS) {
+        const rowLine = lines.find((l) => l.includes(row.url));
+        expect(rowLine, `CSV row for ${row.url} should exist`).toBeTruthy();
+        expect(rowLine).toContain(row.detectedAt);
+        expect(rowLine).toContain(row.pageTitle);
+        expect(rowLine).toContain(row.domain);
+      }
+    });
+  });
+});
