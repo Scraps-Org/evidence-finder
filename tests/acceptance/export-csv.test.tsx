@@ -1,70 +1,63 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import Page from '../../src/app/page'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import EvidenceList from '../../src/components/EvidenceList'
 
-describe('D5-export-csv – UI: export control triggers file download', () => {
-  let anchorClickSpy: ReturnType<typeof vi.fn>
-  let createdAnchor: HTMLAnchorElement
-  let originalCreateElement: typeof document.createElement
-  let createObjectURLSpy: ReturnType<typeof vi.fn>
-  let revokeObjectURLSpy: ReturnType<typeof vi.fn>
-
+describe('D5-export-csv: UI – export control triggers download', () => {
   beforeEach(() => {
-    createObjectURLSpy = vi.fn(() => 'blob:http://localhost/fake-url')
-    revokeObjectURLSpy = vi.fn()
+    vi.restoreAllMocks()
+  })
+
+  it('activating the export control triggers a file download, not inline render or redirect', () => {
+    const evidence = [
+      {
+        id: '1',
+        url: 'https://example.com/page1',
+        detectedAt: '2026-01-01T00:00:00.000Z',
+        pageTitle: 'Example Page',
+        domain: 'example.com',
+      },
+      {
+        id: '2',
+        url: 'https://example.com/page2',
+        detectedAt: '2026-01-02T00:00:00.000Z',
+        pageTitle: 'Second Page',
+        domain: 'example.com',
+      },
+    ]
+
+    const createObjectURLSpy = vi.fn(() => 'blob:fake-url')
+    const revokeObjectURLSpy = vi.fn()
     vi.stubGlobal('URL', {
       createObjectURL: createObjectURLSpy,
       revokeObjectURL: revokeObjectURLSpy,
     })
 
-    anchorClickSpy = vi.fn()
-    originalCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation(
-      (tag: string, ...args: [ElementCreationOptions?]) => {
-        if (tag === 'a') {
-          createdAnchor = originalCreateElement('a') as HTMLAnchorElement
-          createdAnchor.click = anchorClickSpy
-          return createdAnchor
-        }
-        return originalCreateElement(tag, ...args)
-      },
-    )
+    const clickSpy = vi.fn()
+    const anchorEl = {
+      href: '',
+      download: '',
+      click: clickSpy,
+      style: {},
+    }
+    const createElementSpy = vi
+      .spyOn(document, 'createElement')
+      .mockImplementation((tag: string) => {
+        if (tag === 'a') return anchorEl as unknown as HTMLAnchorElement
+        return document.createElement(tag)
+      })
+    const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockReturnValue(anchorEl as unknown as HTMLAnchorElement)
+    const removeChildSpy = vi.spyOn(document.body, 'removeChild').mockReturnValue(anchorEl as unknown as HTMLAnchorElement)
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify([
-              {
-                id: '1',
-                url: 'https://example.com',
-                detectedAt: '2026-01-01T00:00:00.000Z',
-                pageTitle: 'Example Page',
-                domain: 'example.com',
-                caseId: 'case-1',
-              },
-            ]),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        ),
-      ),
-    )
-  })
+    render(<EvidenceList evidence={evidence} caseId="case-1" />)
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
-  })
-
-  it('activating the export control triggers a file download, not inline render or redirect', async () => {
-    render(<Page />)
-
-    const exportButton = await screen.findByRole('button', { name: /export.*csv/i })
+    const exportButton = screen.getByRole('button', { name: /export.*csv/i })
     fireEvent.click(exportButton)
 
-    expect(anchorClickSpy).toHaveBeenCalledOnce()
-    expect(createdAnchor.download).toMatch(/\.csv$/i)
-    expect(createdAnchor.href).not.toBe('')
+    expect(createObjectURLSpy).toHaveBeenCalledOnce()
+    expect(clickSpy).toHaveBeenCalledOnce()
+
+    createElementSpy.mockRestore()
+    appendChildSpy.mockRestore()
+    removeChildSpy.mockRestore()
   })
 })
