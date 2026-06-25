@@ -15,6 +15,8 @@ describe('Candidate persistence (acceptance)', () => {
         url: unique,
         caseId: 'sample',
         status: 'sample',
+        title: 'sample',
+        snippet: 'sample',
       },
     })
     expect(created).toBeTruthy()
