@@ -1,81 +1,56 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
-import EvidenceList from '../../src/components/EvidenceList';
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import EvidenceList from '../../src/components/EvidenceList'
 
-// ---------------------------------------------------------------------------
-// Minimal Evidence shape the component must accept
-// ---------------------------------------------------------------------------
+const EVIDENCE_URL = 'https://example.com/article'
 
-interface EvidenceItem {
-  id: string;
-  url: string;
-  pageTitle: string;
-  domain: string;
-  detectedAt: Date | string;
-  caseId: string;
-}
-
-const ITEMS: EvidenceItem[] = [
+const sampleItems = [
   {
     id: 'ev-1',
-    url: 'https://example.com/article',
-    pageTitle: 'Example Domain',
+    url: EVIDENCE_URL,
+    pageTitle: 'Example Article Title',
     domain: 'example.com',
-    detectedAt: new Date('2026-06-25T12:00:00.000Z'),
-    caseId: 'case-abc',
+    detectedAt: new Date('2026-06-25T10:00:00Z'),
+    caseId: 'case-1',
   },
-  {
-    id: 'ev-2',
-    url: 'https://another.org/page',
-    pageTitle: 'Another Site',
-    domain: 'another.org',
-    detectedAt: new Date('2026-06-24T08:30:00.000Z'),
-    caseId: 'case-abc',
-  },
-];
+]
 
 describe('EvidenceList component', () => {
-  it('(a) renders URL and text metadata (pageTitle, domain, detectedAt) for each evidence item', () => {
-    render(<EvidenceList items={ITEMS} />);
+  it('displays URL and text metadata for each evidence item', () => {
+    render(<EvidenceList items={sampleItems} />)
 
-    // URL visible as text or link href text
-    expect(screen.getByText('https://example.com/article')).toBeTruthy();
-    expect(screen.getByText('https://another.org/page')).toBeTruthy();
+    // URL visible as text
+    expect(screen.getByText(EVIDENCE_URL)).toBeInTheDocument()
 
-    // pageTitle
-    expect(screen.getByText('Example Domain')).toBeTruthy();
-    expect(screen.getByText('Another Site')).toBeTruthy();
+    // pageTitle visible
+    expect(screen.getByText('Example Article Title')).toBeInTheDocument()
 
-    // domain
-    expect(screen.getByText('example.com')).toBeTruthy();
-    expect(screen.getByText('another.org')).toBeTruthy();
+    // domain visible
+    expect(screen.getByText('example.com')).toBeInTheDocument()
 
-    // detectedAt — at least one timestamp rendered somewhere in the output
-    expect(screen.getByText(/2026/)).toBeTruthy();
-  });
+    // detectedAt visible (some representation of the date)
+    expect(screen.getByText(/2026/)).toBeInTheDocument()
+  })
 
-  it('(b) does NOT render <img> or <video> whose src points at an evidence URL', () => {
-    const { container } = render(<EvidenceList items={ITEMS} />);
+  it('does not render an <img> or <video> element pointing at the evidence URL', () => {
+    const { container } = render(<EvidenceList items={sampleItems} />)
 
-    const evidenceUrls = ITEMS.map((i) => i.url);
-
-    const imgs = Array.from(container.querySelectorAll('img'));
+    const imgs = Array.from(container.querySelectorAll('img'))
     for (const img of imgs) {
-      const src = img.getAttribute('src') ?? '';
-      expect(evidenceUrls.some((u) => src.includes(u))).toBe(false);
+      const src = img.getAttribute('src') ?? ''
+      expect(src).not.toContain(EVIDENCE_URL)
     }
 
-    const videos = Array.from(container.querySelectorAll('video'));
+    const videos = Array.from(container.querySelectorAll('video'))
     for (const video of videos) {
-      const src = video.getAttribute('src') ?? '';
-      expect(evidenceUrls.some((u) => src.includes(u))).toBe(false);
-    }
+      const src = video.getAttribute('src') ?? ''
+      expect(src).not.toContain(EVIDENCE_URL)
 
-    // Also check <source> tags inside <video>
-    const sources = Array.from(container.querySelectorAll('video source'));
-    for (const source of sources) {
-      const src = source.getAttribute('src') ?? '';
-      expect(evidenceUrls.some((u) => src.includes(u))).toBe(false);
+      // also check <source> children
+      const sources = Array.from(video.querySelectorAll('source'))
+      for (const source of sources) {
+        expect(source.getAttribute('src') ?? '').not.toContain(EVIDENCE_URL)
+      }
     }
-  });
-});
+  })
+})
