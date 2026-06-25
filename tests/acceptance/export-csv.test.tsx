@@ -1,80 +1,95 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import EvidenceList from '../../src/components/EvidenceList'
 
-const mockEvidence = [
+const FAKE_EVIDENCE = [
   {
-    id: '1',
+    id: 'e1',
     url: 'https://example.com/page1',
-    detectedAt: '2026-06-01T10:00:00.000Z',
-    pageTitle: 'Example Page 1',
+    detectedAt: '2024-01-15T10:00:00Z',
+    pageTitle: 'Example Page One',
     domain: 'example.com',
   },
   {
-    id: '2',
+    id: 'e2',
     url: 'https://other.org/page2',
-    detectedAt: '2026-06-02T11:00:00.000Z',
-    pageTitle: 'Other Page 2',
+    detectedAt: '2024-01-16T11:30:00Z',
+    pageTitle: 'Other Page Two',
     domain: 'other.org',
   },
 ]
 
-describe('D5-export-csv: export control triggers download', () => {
+describe('D5-export-csv: UI — export control triggers download', () => {
+  let createObjectURLSpy: ReturnType<typeof vi.fn>
+  let revokeObjectURLSpy: ReturnType<typeof vi.fn>
+  let appendChildSpy: ReturnType<typeof vi.spyOn>
+  let clickSpy: ReturnType<typeof vi.fn>
+
   beforeEach(() => {
-    // Stub URL.createObjectURL and URL.revokeObjectURL for jsdom
+    createObjectURLSpy = vi.fn(() => 'blob:fake-url')
+    revokeObjectURLSpy = vi.fn()
     vi.stubGlobal('URL', {
-      createObjectURL: vi.fn<[Blob], string>(() => 'blob:mock-url'),
-      revokeObjectURL: vi.fn<[string], void>(),
+      createObjectURL: createObjectURLSpy,
+      revokeObjectURL: revokeObjectURLSpy,
+    })
+
+    clickSpy = vi.fn()
+    appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((node) => {
+      if (node instanceof HTMLAnchorElement) {
+        node.click = clickSpy
+      }
+      return node
     })
   })
 
-  it('triggers a file download (not inline render or redirect) when the export control is activated', () => {
-    const clickSpy = vi.fn<[], void>()
-
-    // Intercept anchor click to capture download behavior
-    const originalCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation(
-      (tag: string, ...args: [ElementCreationOptions?]) => {
-        const el = originalCreateElement(tag, ...args)
-        if (tag === 'a') {
-          Object.defineProperty(el, 'click', { value: clickSpy, writable: true })
-        }
-        return el
-      }
-    )
-
-    render(<EvidenceList evidence={mockEvidence} caseId="case-1" />)
-
-    const exportControl = screen.getByRole('button', { name: /export/i })
-    fireEvent.click(exportControl)
-
-    expect(clickSpy).toHaveBeenCalledTimes(1)
-
-    vi.restoreAllMocks()
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    appendChildSpy.mockRestore()
   })
 
-  it('sets a download attribute on the anchor (not a navigation or inline render)', () => {
-    let capturedAnchor: HTMLAnchorElement | null = null
+  it('triggers a file download (not inline render or redirect) when the export control is activated', async () => {
+    render(<EvidenceList evidence={FAKE_EVIDENCE} caseId="case-1" />)
 
-    const originalCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation(
-      (tag: string, ...args: [ElementCreationOptions?]) => {
-        const el = originalCreateElement(tag, ...args)
-        if (tag === 'a') {
-          capturedAnchor = el as HTMLAnchorElement
-        }
-        return el
-      }
-    )
+    const exportButton = screen.getByRole('button', { name: /export.*csv/i })
+    fireEvent.click(exportButton)
 
-    render(<EvidenceList evidence={mockEvidence} caseId="case-2" />)
+    await waitFor(() => {
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
+      const blobArg: Blob = createObjectURLSpy.mock.calls[0]![0] as Blob
+      expect(blobArg).toBeInstanceOf(Blob)
+    })
 
-    const exportControl = screen.getByRole('button', { name: /export/i })
-    fireEvent.click(exportControl)
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+  })
 
-    expect(capturedAnchor).not.toBeNull()
-    expect((capturedAnchor as unknown as HTMLAnchorElement).download).toMatch(/\.csv$/i)
+  it('generated CSV contains url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
+    render(<EvidenceList evidence={FAKE_EVIDENCE} caseId="case-1" />)
 
-    vi.restoreAllMocks()
+    const exportButton = screen.getByRole('button', { name: /export.*csv/i })
+    fireEvent.click(exportButton)
+
+    await waitFor(() => {
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
+    })
+
+    const blobArg: Blob = createObjectURLSpy.mock.calls[0]![0] as Blob
+    const csvText = await blobArg.text()
+    const lines = csvText.trim().split('\n')
+
+    const header = lines[0]!
+    expect(header).toMatch(/url/i)
+    expect(header).toMatch(/detectedAt/i)
+    expect(header).toMatch(/pageTitle/i)
+    expect(header).toMatch(/domain/i)
+
+    expect(lines.length).toBeGreaterThanOrEqual(3)
+
+    for (const evidence of FAKE_EVIDENCE) {
+      const matchingLine = lines.slice(1).find((line) => line.includes(evidence.url))
+      expect(matchingLine, `row for ${evidence.url} not found in CSV`).toBeDefined()
+      expect(matchingLine).toContain(evidence.detectedAt)
+      expect(matchingLine).toContain(evidence.pageTitle)
+      expect(matchingLine).toContain(evidence.domain)
+    }
   })
 })
