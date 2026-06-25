@@ -1,54 +1,42 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "bf908020ad4463e3e572a4656131f5a84c3f8f96",
-      "66cb55ddcc673f7152917edde350ec45a25baf3f",
-      "a64741f55a66410582702848688654ef971a57bf"
+      "834bf8b66a84423397ff789a846bf4ff915fbffa"
     ]
   },
-  "base_ref": "3d6ecbe4082051f7c6eabd9e20bd89b385dddf8a",
-  "code_integration_sha": "689df0bf36b4b73091d2b055253db3ea253a5ad5",
+  "base_ref": "a5833b49086ba5524fc092d0772bc9de2ad452ab",
+  "code_integration_sha": "12d966762c30678cfffc6252172e2ae48da7e21c",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-d1077e00928e",
-  "dispatch_id": "eval-evidence-finder-d1077e00928e-a3",
+  "correlation_id": "eval-evidence-finder-2bc3a53e4e30",
+  "dispatch_id": "eval-evidence-finder-2bc3a53e4e30",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-23T12:02:52.854203Z",
-  "goal_doc_sha": "d1077e00928e",
-  "goal_id": "evidence-finder-d1077e00928e",
-  "integration_branch": "scraps/goal/evidence-finder-d1077e00928e",
+  "generated_at": "2026-06-25T09:46:56.298923Z",
+  "goal_doc_sha": "2bc3a53e4e30",
+  "goal_id": "evidence-finder-2bc3a53e4e30",
+  "integration_branch": "scraps/goal/evidence-finder-2bc3a53e4e30",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "341b0ed7e86c777916dc439e1841c028d32fa0358af9e922dfe6451b79544bab"
+    "sha256": "2b6833f5f8ea6284d5b7890350e381d4f5899d3e7cd4f03644f634e81c96512f"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "evidence-schema",
-        "status": "green",
-        "tier": "extended"
-      },
-      {
-        "name": "evidence-route",
-        "status": "green",
-        "tier": "extended"
-      },
-      {
-        "name": "evidence-list",
+        "name": "evidence-list-content-shield",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 3,
+    "merged_task_count": 1,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D3-manual-evidence",
+      "criterion": "D4-content-shielded",
       "how_measured": "deterministic_verification",
-      "observed": "verification_evidence (tasks: evidence-schema, evidence-route, evidence-list)"
+      "observed": "verification_evidence (tasks: evidence-list-content-shield)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -82,65 +70,7 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma validate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/evidence-migration.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/case-migration.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/case-route.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm run typecheck",
-          "exit_code": 0,
-          "status": "passed"
-        }
-      ],
-      "log_ref": "event:task.verification_evidence:evidence-schema",
-      "name": "evidence-schema",
-      "status": "green",
-      "tier": "extended"
-    },
-    {
-      "checks": [
-        {
-          "command": "pnpm install --frozen-lockfile",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma migrate deploy",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/evidence-route.test.ts",
+          "command": "pnpm exec vitest run tests/acceptance/evidence-content-shield.test.tsx tests/acceptance/evidence-list.test.tsx",
           "exit_code": 0,
           "status": "passed"
         },
@@ -150,61 +80,13 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec eslint src/app/api/evidence/route.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
           "command": "pnpm run typecheck",
           "exit_code": 0,
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:evidence-route",
-      "name": "evidence-route",
-      "status": "green",
-      "tier": "extended"
-    },
-    {
-      "checks": [
-        {
-          "command": "pnpm install --frozen-lockfile",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma migrate deploy",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/evidence-list.test.tsx",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec tsc --noEmit",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec eslint src/components/EvidenceList.tsx",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm run typecheck",
-          "exit_code": 0,
-          "status": "passed"
-        }
-      ],
-      "log_ref": "event:task.verification_evidence:evidence-list",
-      "name": "evidence-list",
+      "log_ref": "event:task.verification_evidence:evidence-list-content-shield",
+      "name": "evidence-list-content-shield",
       "status": "green",
       "tier": "extended"
     }
