@@ -3,10 +3,10 @@ product: "evidence-finder"
 owner: lean-startup-agent
 status: active
 updated: 2026-06-25
-goal_version: 5df61a4bda2a
+goal_version: 5922377dac34
 acceptance:
-  - id: D5-export-csv
-    hint: "An export control generates a downloadable CSV containing, per evidence row: url, detectedAt, pageTitle, domain. build + tsc pass."
+  - id: D6-source-adapter
+    hint: "A `SearchSource` interface with `query(terms): SearchResult[]` and `SearchResult{url,title,snippet,source,foundAt}` plus an in-memory fixture impl; a unit test (pnpm test) is green showing the fixture returns ≥1 typed result. No network call. build + tsc pass."
     high_impact: true
   - id: PKG-HEALTH
     hint: "clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다."
@@ -19,7 +19,7 @@ acceptance:
 
 ## 목표 (1줄)
 
-A user can export a case's evidence package as CSV.
+A typed search-source contract exists with an offline fixture source (no network).
 
 ## 해야할 일
 
@@ -41,7 +41,7 @@ Out of scope:
 
 frontmatter `acceptance` 와 1:1. evaluator 가 게이트에서 판단형 기준(P1)으로 도출.
 
-- D5-export-csv: An export control generates a downloadable CSV containing, per evidence row: url, detectedAt, pageTitle, domain. build + tsc pass.
+- D6-source-adapter: A `SearchSource` interface with `query(terms): SearchResult[]` and `SearchResult{url,title,snippet,source,foundAt}` plus an in-memory fixture impl; a unit test (pnpm test) is green showing the fixture returns ≥1 typed result. No network call. build + tsc pass.
 - PKG-HEALTH: clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다.
 
 ## 코딩 가이드 (planner)

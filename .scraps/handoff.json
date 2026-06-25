@@ -1,48 +1,42 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "6bfb0c76b3c58379f310440baff963e2edd56fae",
-      "4c9a4c6a361aafa126e94b9fbeb8f4f5c50f7e9d"
+      "343e5094f3e1cee62693538e1840a89e99b98bd6"
     ]
   },
-  "base_ref": "adb6fdd5c76f8c5d9f6f170d8b351796c9cb5837",
-  "code_integration_sha": "430f38d7c02efdf5feb77bc1cac5e1207029a1c5",
+  "base_ref": "2b84350301eee53f74230357e94b651bed67d06b",
+  "code_integration_sha": "64166a4c93dd05f32ae0c0edfe41fa5164636fd8",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-5df61a4bda2a",
-  "dispatch_id": "eval-evidence-finder-5df61a4bda2a-a26",
+  "correlation_id": "eval-evidence-finder-5922377dac34",
+  "dispatch_id": "eval-evidence-finder-5922377dac34",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-25T15:32:45.543146Z",
-  "goal_doc_sha": "5df61a4bda2a",
-  "goal_id": "evidence-finder-5df61a4bda2a",
-  "integration_branch": "scraps/goal/evidence-finder-5df61a4bda2a",
+  "generated_at": "2026-06-25T15:41:10.510444Z",
+  "goal_doc_sha": "5922377dac34",
+  "goal_id": "evidence-finder-5922377dac34",
+  "integration_branch": "scraps/goal/evidence-finder-5922377dac34",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "f849d98a8c1b2f76b5e0339da6b81b79dbcfdcce7cb74abd5c0cdf681a12e075"
+    "sha256": "69b3fefbd11fd02388e51610f30db542a3ec1f81123c97e13e834c1340671499"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "export-csv-route",
-        "status": "green",
-        "tier": "extended"
-      },
-      {
-        "name": "export-csv-ui",
+        "name": "search-source-contract",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 2,
+    "merged_task_count": 1,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D5-export-csv",
+      "criterion": "D6-source-adapter",
       "how_measured": "deterministic_verification",
-      "observed": "verification_evidence (tasks: export-csv-route, export-csv-ui)"
+      "observed": "verification_evidence (tasks: search-source-contract)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -76,55 +70,12 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/acceptance/export-csv-route.test.ts",
+          "command": "pnpm exec vitest run tests/acceptance/search-source-contract.test.ts",
           "exit_code": 0,
           "status": "passed"
         },
         {
-          "command": "pnpm exec tsc --noEmit",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm run typecheck",
-          "exit_code": 0,
-          "status": "passed"
-        }
-      ],
-      "log_ref": "event:task.verification_evidence:export-csv-route",
-      "name": "export-csv-route",
-      "status": "green",
-      "tier": "extended"
-    },
-    {
-      "checks": [
-        {
-          "command": "pnpm install --frozen-lockfile",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma migrate reset --force --skip-generate --skip-seed",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/export-csv.test.tsx",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/evidence-list.test.tsx tests/acceptance/evidence-content-shield.test.tsx",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec tsc --noEmit",
+          "command": "pnpm typecheck",
           "exit_code": 0,
           "status": "passed"
         },
@@ -134,8 +85,8 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:export-csv-ui",
-      "name": "export-csv-ui",
+      "log_ref": "event:task.verification_evidence:search-source-contract",
+      "name": "search-source-contract",
       "status": "green",
       "tier": "extended"
     }
