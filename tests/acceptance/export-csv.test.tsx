@@ -1,92 +1,92 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import EvidenceList from '../../src/components/EvidenceList';
+import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import EvidenceList from '../../src/components/EvidenceList'
 
-const EVIDENCE_ROWS = [
+const EVIDENCE = [
   {
-    id: 'ev-1',
+    id: '1',
     url: 'https://example.com/page1',
-    detectedAt: '2026-06-01T10:00:00.000Z',
+    detectedAt: '2026-06-01T10:00:00Z',
     pageTitle: 'Example Page One',
     domain: 'example.com',
   },
   {
-    id: 'ev-2',
-    url: 'https://example.com/page2',
-    detectedAt: '2026-06-02T11:00:00.000Z',
-    pageTitle: 'Example Page Two',
-    domain: 'example.com',
+    id: '2',
+    url: 'https://other.org/page2',
+    detectedAt: '2026-06-02T12:00:00Z',
+    pageTitle: 'Other Page Two',
+    domain: 'other.org',
   },
-];
+]
 
-describe('D5-export-csv – UI: export control triggers download', () => {
-  let createdUrl: string;
-  let anchorClick: ReturnType<typeof vi.fn>;
-
+describe('D5-export-csv – UI layer', () => {
   beforeEach(() => {
-    createdUrl = '';
-    anchorClick = vi.fn();
+    // Stub URL.createObjectURL and URL.revokeObjectURL (jsdom doesn't implement them)
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:http://localhost/fake-object-url'),
+      revokeObjectURL: vi.fn(),
+    })
+  })
 
-    const anchor = document.createElement('a');
-    vi.spyOn(anchor, 'click').mockImplementation(anchorClick);
+  it('triggers a file download (not inline render or redirect) when export control is activated', () => {
+    const appendChildSpy = vi.spyOn(document.body, 'appendChild')
+    const removeChildSpy = vi.spyOn(document.body, 'removeChild')
 
-    vi.spyOn(document, 'createElement').mockImplementation(
-      (tag: string): HTMLElement => {
-        if (tag === 'a') return anchor;
-        return document.createElement.call(document, tag) as HTMLElement;
-      },
-    );
+    render(<EvidenceList evidence={EVIDENCE} />)
 
-    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob: Blob | MediaSource) => {
-      createdUrl = `blob:mock-${(blob as Blob).size}`;
-      return createdUrl;
-    });
+    const exportControl = screen.getByRole('button', { name: /export.*csv/i })
+    fireEvent.click(exportControl)
 
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
-  });
+    // A programmatic <a download> must have been appended to trigger the download
+    const appendedAnchor = appendChildSpy.mock.calls
+      .map((args) => args[0])
+      .find((el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement && el.download !== '')
 
-  it('activating the export control triggers a file download, not an inline render or redirect', () => {
-    render(<EvidenceList evidence={EVIDENCE_ROWS} />);
+    expect(appendedAnchor).toBeDefined()
+    expect(appendedAnchor!.download).toMatch(/\.csv$/i)
+    // Must not open inline or redirect
+    expect(appendedAnchor!.target).not.toBe('_blank')
+    expect(appendedAnchor!.href).toMatch(/^blob:/)
 
-    const exportButton = screen.getByRole('button', { name: /export.*csv|download.*csv|csv/i });
-    fireEvent.click(exportButton);
+    removeChildSpy.mockRestore()
+    appendChildSpy.mockRestore()
+  })
 
-    expect(anchorClick).toHaveBeenCalledTimes(1);
-  });
+  it('CSV blob contains url, detectedAt, pageTitle, domain for every evidence row', () => {
+    let capturedBlob: Blob | undefined
+    const createObjectURL = vi.fn((b: Blob) => {
+      capturedBlob = b
+      return 'blob:http://localhost/fake'
+    })
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() })
 
-  it('the downloaded CSV contains url, detectedAt, pageTitle, domain columns for every evidence row', () => {
-    let capturedBlob: Blob | null = null;
+    render(<EvidenceList evidence={EVIDENCE} />)
 
-    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob: Blob | MediaSource) => {
-      capturedBlob = blob as Blob;
-      return 'blob:mock';
-    });
+    const exportControl = screen.getByRole('button', { name: /export.*csv/i })
+    fireEvent.click(exportControl)
 
-    render(<EvidenceList evidence={EVIDENCE_ROWS} />);
+    expect(capturedBlob).toBeDefined()
 
-    const exportButton = screen.getByRole('button', { name: /export.*csv|download.*csv|csv/i });
-    fireEvent.click(exportButton);
+    return capturedBlob!.text().then((csv) => {
+      const lines = csv.trim().split('\n')
+      // Header line must contain all four columns
+      const header = lines[0]!.toLowerCase()
+      expect(header).toContain('url')
+      expect(header).toContain('detectedat')
+      expect(header).toContain('pagetitle')
+      expect(header).toContain('domain')
 
-    expect(capturedBlob).not.toBeNull();
+      // One data line per evidence item
+      expect(lines.length).toBe(EVIDENCE.length + 1)
 
-    return (capturedBlob as unknown as Blob).text().then((csvText: string) => {
-      const lines = csvText.trim().split('\n');
-      // header + 2 data rows
-      expect(lines.length).toBeGreaterThanOrEqual(3);
-
-      const header = lines[0]!.toLowerCase();
-      expect(header).toContain('url');
-      expect(header).toContain('detectedat');
-      expect(header).toContain('pagetitle');
-      expect(header).toContain('domain');
-
-      for (const row of EVIDENCE_ROWS) {
-        const rowLine = lines.find((l) => l.includes(row.url));
-        expect(rowLine, `CSV row for ${row.url} should exist`).toBeTruthy();
-        expect(rowLine).toContain(row.detectedAt);
-        expect(rowLine).toContain(row.pageTitle);
-        expect(rowLine).toContain(row.domain);
+      for (let i = 0; i < EVIDENCE.length; i++) {
+        const row = lines[i + 1]!
+        expect(row).toContain(EVIDENCE[i]!.url)
+        expect(row).toContain(EVIDENCE[i]!.detectedAt)
+        expect(row).toContain(EVIDENCE[i]!.pageTitle)
+        expect(row).toContain(EVIDENCE[i]!.domain)
       }
-    });
-  });
-});
+    })
+  })
+})
