@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { GET } from '../../src/app/api/cases/[caseId]/export/route'
 
 describe('D5-export-csv route', () => {
-  const evidence = [
+  const _evidence = [
     {
       id: 'ev-1',
       url: 'https://example.com/page1',
