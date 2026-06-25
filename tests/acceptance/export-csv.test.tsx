@@ -1,67 +1,64 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import React from 'react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import EvidenceList from '../../src/components/EvidenceList'
 
 const EVIDENCE_ROWS = [
   {
     id: '1',
     url: 'https://example.com/page1',
-    detectedAt: '2026-06-25T10:00:00.000Z',
-    pageTitle: 'Example Page One',
+    detectedAt: '2026-06-01T10:00:00.000Z',
+    pageTitle: 'Page One',
     domain: 'example.com',
   },
   {
     id: '2',
-    url: 'https://other.org/page2',
-    detectedAt: '2026-06-24T09:00:00.000Z',
-    pageTitle: 'Other Page Two',
-    domain: 'other.org',
+    url: 'https://example.com/page2',
+    detectedAt: '2026-06-02T11:00:00.000Z',
+    pageTitle: 'Page Two',
+    domain: 'example.com',
   },
 ]
 
-describe('D5-export-csv: CSV export control', () => {
-  let createdObjectUrls: string[]
-  let revokedObjectUrls: string[]
-  let clickedAnchors: { href: string; download: string }[]
+describe('D5-export-csv — UI layer', () => {
+  let createdObjectUrl: string
+  let clickedAnchorHref: string
+  let clickedAnchorDownload: string
+  let anchorClickSpy: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    createdObjectUrls = []
-    revokedObjectUrls = []
-    clickedAnchors = []
+    createdObjectUrl = ''
+    clickedAnchorHref = ''
+    clickedAnchorDownload = ''
+    anchorClickSpy = vi.fn()
 
     vi.stubGlobal(
       'URL',
-      Object.assign(
-        function URL(url: string) {
-          return { href: url }
-        },
-        {
-          createObjectURL: (blob: Blob) => {
-            const fakeUrl = `blob:fake-${createdObjectUrls.length}`
-            createdObjectUrls.push(fakeUrl)
-            return fakeUrl
-          },
-          revokeObjectURL: (url: string) => {
-            revokedObjectUrls.push(url)
-          },
-        },
-      ),
+      class MockURL {
+        static createObjectURL(blob: Blob): string {
+          createdObjectUrl = `blob:mock-${blob.size}`
+          return createdObjectUrl
+        }
+        static revokeObjectURL(_url: string): void {}
+      },
     )
 
     const originalCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      const el = originalCreateElement(tag)
-      if (tag === 'a') {
-        vi.spyOn(el as HTMLAnchorElement, 'click').mockImplementation(() => {
-          clickedAnchors.push({
-            href: (el as HTMLAnchorElement).href,
-            download: (el as HTMLAnchorElement).download,
-          })
-        })
-      }
-      return el
-    })
+    vi.spyOn(document, 'createElement').mockImplementation(
+      (tag: string): HTMLElement => {
+        if (tag === 'a') {
+          const anchor = originalCreateElement('a') as HTMLAnchorElement
+          const originalClick = anchor.click.bind(anchor)
+          anchor.click = () => {
+            clickedAnchorHref = anchor.href
+            clickedAnchorDownload = anchor.download
+            anchorClickSpy()
+            originalClick()
+          }
+          return anchor
+        }
+        return originalCreateElement(tag)
+      },
+    )
   })
 
   afterEach(() => {
@@ -69,51 +66,56 @@ describe('D5-export-csv: CSV export control', () => {
     vi.unstubAllGlobals()
   })
 
-  it('triggers a file download (not inline render or redirect) when the export control is activated', () => {
-    render(<EvidenceList evidence={EVIDENCE_ROWS} caseId="case-1" />)
+  it('triggers a file download (not inline render or redirect) when the export control is activated', async () => {
+    render(<EvidenceList evidence={EVIDENCE_ROWS} />)
 
     const exportBtn = screen.getByRole('button', { name: /export.*csv/i })
     fireEvent.click(exportBtn)
 
-    expect(createdObjectUrls.length).toBeGreaterThan(0)
-    expect(clickedAnchors.length).toBeGreaterThan(0)
-    const anchor = clickedAnchors[0]!
-    expect(anchor.download).toMatch(/\.csv$/i)
+    await waitFor(() => {
+      expect(anchorClickSpy).toHaveBeenCalledTimes(1)
+    })
+
+    expect(clickedAnchorDownload).toBeTruthy()
+    expect(clickedAnchorHref).not.toBe('')
+    // must NOT be a navigation / redirect (same-page or new tab without download attr)
+    expect(clickedAnchorDownload).toMatch(/\.csv$/i)
   })
 
-  it('CSV content includes url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
+  it('CSV content contains url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
     let capturedBlob: Blob | null = null
+
     vi.stubGlobal(
       'URL',
-      Object.assign(
-        function URL(url: string) {
-          return { href: url }
-        },
-        {
-          createObjectURL: (blob: Blob) => {
-            capturedBlob = blob
-            return 'blob:captured'
-          },
-          revokeObjectURL: (_url: string) => undefined,
-        },
-      ),
+      class MockURL2 {
+        static createObjectURL(blob: Blob): string {
+          capturedBlob = blob
+          return 'blob:mock'
+        }
+        static revokeObjectURL(_url: string): void {}
+      },
     )
 
-    render(<EvidenceList evidence={EVIDENCE_ROWS} caseId="case-1" />)
+    render(<EvidenceList evidence={EVIDENCE_ROWS} />)
 
     const exportBtn = screen.getByRole('button', { name: /export.*csv/i })
     fireEvent.click(exportBtn)
 
-    expect(capturedBlob).not.toBeNull()
-    const csvText = await (capturedBlob as unknown as Blob).text()
+    await waitFor(() => {
+      expect(capturedBlob).not.toBeNull()
+    })
 
+    const csvText = await (capturedBlob as Blob).text()
     const lines = csvText.trim().split('\n')
-    const header = lines[0]!
-    expect(header).toMatch(/url/i)
-    expect(header).toMatch(/detectedAt/i)
-    expect(header).toMatch(/pageTitle/i)
-    expect(header).toMatch(/domain/i)
 
+    // header row must declare all four columns
+    const header = lines[0]!.toLowerCase()
+    expect(header).toContain('url')
+    expect(header).toContain('detectedat')
+    expect(header).toContain('pagetitle')
+    expect(header).toContain('domain')
+
+    // one data row per evidence item
     expect(lines.length).toBe(EVIDENCE_ROWS.length + 1)
 
     for (let i = 0; i < EVIDENCE_ROWS.length; i++) {
