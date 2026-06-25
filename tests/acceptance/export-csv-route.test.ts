@@ -1,77 +1,75 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GET } from '../../src/app/api/cases/[caseId]/export/route';
+import { describe, it, expect } from 'vitest'
+import { GET } from '../../src/app/api/cases/[caseId]/export/route'
+
+const CASE_ID = 'test-case-export-001'
+
+const EVIDENCE_ROWS = [
+  {
+    id: 'row-1',
+    url: 'https://alpha.test/foo',
+    detectedAt: new Date('2026-05-10T08:00:00.000Z'),
+    pageTitle: 'Alpha Foo Page',
+    domain: 'alpha.test',
+    caseId: CASE_ID,
+  },
+  {
+    id: 'row-2',
+    url: 'https://beta.test/bar',
+    detectedAt: new Date('2026-05-11T09:00:00.000Z'),
+    pageTitle: 'Beta Bar Page',
+    domain: 'beta.test',
+    caseId: CASE_ID,
+  },
+]
 
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     evidence: {
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue(EVIDENCE_ROWS),
     },
   },
-}));
+}))
 
-import prisma from '../../src/lib/prisma';
+describe('D5-export-csv: route returns CSV with all required columns', () => {
+  it('responds with a CSV containing url, detectedAt, pageTitle, domain for every evidence row', async () => {
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/export`, { method: 'GET' })
+    const res = await GET(req, { params: { caseId: CASE_ID } })
 
-const EVIDENCE_ROWS = [
-  {
-    id: 'e1',
-    url: 'https://example.com/page1',
-    detectedAt: new Date('2026-06-01T10:00:00.000Z'),
-    pageTitle: 'Page One',
-    domain: 'example.com',
-  },
-  {
-    id: 'e2',
-    url: 'https://other.org/page2',
-    detectedAt: new Date('2026-06-02T12:00:00.000Z'),
-    pageTitle: 'Page Two',
-    domain: 'other.org',
-  },
-];
+    expect(res.status).toBe(200)
 
-describe('D5-export-csv route — GET /api/cases/[caseId]/export', () => {
-  beforeEach(() => {
-    vi.mocked(prisma.evidence.findMany).mockResolvedValue(
-      EVIDENCE_ROWS as Awaited<ReturnType<typeof prisma.evidence.findMany>>
-    );
-  });
+    const contentType = res.headers.get('content-type') ?? ''
+    expect(contentType).toMatch(/text\/csv/i)
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
+    const contentDisposition = res.headers.get('content-disposition') ?? ''
+    expect(contentDisposition).toMatch(/attachment/i)
+    expect(contentDisposition).toMatch(/\.csv/i)
 
-  it('returns a CSV download response (not inline or redirect)', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export', { method: 'GET' });
-    const res = await GET(req, { params: Promise.resolve({ caseId: 'case-1' }) });
+    const text = await res.text()
+    const lines = text.trim().split('\n').map((l) => l.trim())
 
-    expect(res.status).toBe(200);
+    const header = lines[0]!
+    const headerCols = header.split(',').map((c) => c.replace(/"/g, '').trim())
+    expect(headerCols).toContain('url')
+    expect(headerCols).toContain('detectedAt')
+    expect(headerCols).toContain('pageTitle')
+    expect(headerCols).toContain('domain')
 
-    const contentDisposition = res.headers.get('content-disposition') ?? '';
-    expect(contentDisposition).toMatch(/attachment/);
+    expect(lines.length).toBe(EVIDENCE_ROWS.length + 1)
 
-    const contentType = res.headers.get('content-type') ?? '';
-    expect(contentType).toMatch(/text\/csv/);
-  });
-
-  it('CSV body contains url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export', { method: 'GET' });
-    const res = await GET(req, { params: Promise.resolve({ caseId: 'case-1' }) });
-
-    const body = await res.text();
-    const lines = body.trim().split('\n');
-
-    const header = lines[0]!.toLowerCase();
-    expect(header).toContain('url');
-    expect(header).toContain('detectedat');
-    expect(header).toContain('pagetitle');
-    expect(header).toContain('domain');
-
-    expect(lines.length).toBeGreaterThanOrEqual(EVIDENCE_ROWS.length + 1);
+    const urlIdx = headerCols.indexOf('url')
+    const detectedAtIdx = headerCols.indexOf('detectedAt')
+    const pageTitleIdx = headerCols.indexOf('pageTitle')
+    const domainIdx = headerCols.indexOf('domain')
 
     for (let i = 0; i < EVIDENCE_ROWS.length; i++) {
-      const row = lines[i + 1]!;
-      expect(row).toContain(EVIDENCE_ROWS[i]!.url);
-      expect(row).toContain(EVIDENCE_ROWS[i]!.domain);
-      expect(row).toContain(EVIDENCE_ROWS[i]!.pageTitle);
+      const row = EVIDENCE_ROWS[i]!
+      const dataLine = lines[i + 1]!
+      const cols = dataLine.split(',').map((c) => c.replace(/"/g, '').trim())
+
+      expect(cols[urlIdx]).toBe(row.url)
+      expect(cols[detectedAtIdx]).toBeTruthy()
+      expect(cols[pageTitleIdx]).toBe(row.pageTitle)
+      expect(cols[domainIdx]).toBe(row.domain)
     }
-  });
-});
+  })
+})
