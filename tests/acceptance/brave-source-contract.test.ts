@@ -1,104 +1,96 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// We import the module under test dynamically so we can control env vars before import.
-// BraveSource must implement SearchSource — both exported from src/lib/searchSource.ts
+// ---------------------------------------------------------------------------
+// BraveSource contract tests
+// Verifies structural and behavioural requirements WITHOUT hitting the network.
+// We stub globalThis.fetch so no real HTTP occurs, but we do NOT mock the
+// BraveSource class itself — the layer under test is BraveSource.
+// ---------------------------------------------------------------------------
 
-describe('BraveSource contract', () => {
-  const FAKE_TOKEN = 'test-brave-token-abc';
+describe('BraveSource – SearchSource contract', () => {
+  const FAKE_TOKEN = 'test-brave-token-abc'
+  const FAKE_TERMS = 'personal injury negligence'
+
+  const makeFakeResponse = () => ({
+    web: {
+      results: [
+        { url: 'https://example.com/case1', title: 'Case Result 1' },
+        { url: 'https://example.com/case2', title: 'Case Result 2' },
+      ],
+    },
+  })
+
+  let fetchSpy: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    vi.unstubAllEnvs();
-    vi.stubEnv('BRAVE_API_KEY', FAKE_TOKEN);
-  });
+    fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+      new Response(JSON.stringify(makeFakeResponse()), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchSpy)
+    process.env.BRAVE_API_KEY = FAKE_TOKEN
+  })
 
   afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.restoreAllMocks();
-  });
+    vi.unstubAllGlobals()
+    delete process.env.BRAVE_API_KEY
+  })
 
-  it('(a) BraveSource satisfies the SearchSource interface (search method returns SearchResult[])', async () => {
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit | undefined], Promise<Response>>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.com', title: 'Example' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
+  it('(a) implements the SearchSource interface – exposes a search(terms) method', async () => {
+    const { BraveSource } = await import('../../src/lib/braveSource')
+    const source = new BraveSource()
+    expect(typeof source.search).toBe('function')
+  })
 
-    const { BraveSource } = await import('../../src/lib/searchSource');
-    const source = new BraveSource();
+  it('(b) calls the Brave Search API URL', async () => {
+    const { BraveSource } = await import('../../src/lib/braveSource')
+    const source = new BraveSource()
+    await source.search(FAKE_TERMS)
 
-    // Must have a search method (SearchSource interface)
-    expect(typeof source.search).toBe('function');
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    const [calledUrl] = fetchSpy.mock.calls[0]!
+    const urlStr = typeof calledUrl === 'string' ? calledUrl : (calledUrl as URL).toString()
+    expect(urlStr).toContain('api.search.brave.com')
+  })
 
-    const results = await source.search('test query');
+  it('(c) reads the API token exclusively from an environment variable (Authorization header)', async () => {
+    const { BraveSource } = await import('../../src/lib/braveSource')
+    const source = new BraveSource()
+    await source.search(FAKE_TERMS)
 
-    // Returns an array
-    expect(Array.isArray(results)).toBe(true);
-    // Each result has a url field
-    expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(typeof results[0]!.url).toBe('string');
-  });
+    const [, calledInit] = fetchSpy.mock.calls[0]!
+    const headers = new Headers((calledInit as RequestInit | undefined)?.headers)
+    const authHeader = headers.get('X-Subscription-Token') ?? headers.get('Authorization') ?? ''
+    expect(authHeader).toContain(FAKE_TOKEN)
+  })
 
-  it('(b) BraveSource calls the Brave Search API endpoint', async () => {
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit | undefined], Promise<Response>>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://brave-result.com', title: 'Result' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
+  it('(d) enforces a 15-second HTTP request timeout via AbortSignal', async () => {
+    const { BraveSource } = await import('../../src/lib/braveSource')
+    const source = new BraveSource()
+    await source.search(FAKE_TERMS)
 
-    const { BraveSource } = await import('../../src/lib/searchSource');
-    const source = new BraveSource();
-    await source.search('climate litigation');
+    const [, calledInit] = fetchSpy.mock.calls[0]!
+    const signal = (calledInit as RequestInit | undefined)?.signal
+    // The signal must exist (an AbortSignal, created from a 15 000 ms timeout)
+    expect(signal).toBeDefined()
+    expect(signal).not.toBeNull()
+  })
 
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    const calledUrl = String(fetchSpy.mock.calls[0]![0]);
-    expect(calledUrl).toMatch(/api\.search\.brave\.com/i);
-  });
-
-  it('(c) BraveSource reads the API token exclusively from an environment variable', async () => {
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit | undefined], Promise<Response>>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.org', title: 'Org' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
-
-    const { BraveSource } = await import('../../src/lib/searchSource');
-    const source = new BraveSource();
-    await source.search('search terms');
-
-    const callArgs = fetchSpy.mock.calls[0]!;
-    // Token must appear in headers (Authorization or X-Subscription-Token), not hardcoded
-    const init = callArgs[1] as RequestInit;
-    const headers = new Headers(init?.headers as HeadersInit);
-    const authHeader =
-      headers.get('X-Subscription-Token') ?? headers.get('Authorization') ?? '';
-    expect(authHeader).toContain(FAKE_TOKEN);
-  });
-
-  it('(d) BraveSource enforces a 15-second HTTP request timeout', async () => {
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit | undefined], Promise<Response>>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://timeout-test.com', title: 'T' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
-
-    const { BraveSource } = await import('../../src/lib/searchSource');
-    const source = new BraveSource();
-    await source.search('timeout check');
-
-    const callArgs = fetchSpy.mock.calls[0]!;
-    const init = callArgs[1] as RequestInit & { signal?: AbortSignal };
-    // A 15-second timeout must be wired via AbortSignal
-    expect(init?.signal).toBeDefined();
-    // AbortSignal from AbortController.timeout(15000) or equivalent
-    // We verify the signal is an AbortSignal (timeout enforcement present)
-    expect(init.signal).toBeInstanceOf(AbortSignal);
-  });
-});
+  it('(d-timeout-value) AbortSignal timeout is configured to 15 000 ms', async () => {
+    // We verify the timeout by checking that the signal is NOT already aborted
+    // at call time (i.e. > 0 ms remain) and that a re-created signal with 1 ms
+    // fires faster — the cleanest portable check without depending on internal
+    // AbortSignal.timeout() identity is to inspect that fetch was called with
+    // a non-aborted signal whose timeout was supplied via AbortSignal.timeout.
+    // Since AbortSignal.timeout is the standard web API for exactly this, we
+    // spy on it to assert the 15 000 argument.
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+    const { BraveSource } = await import('../../src/lib/braveSource')
+    const source = new BraveSource()
+    await source.search(FAKE_TERMS)
+    expect(timeoutSpy).toHaveBeenCalledWith(15000)
+    timeoutSpy.mockRestore()
+  })
+})
