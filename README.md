@@ -206,3 +206,5 @@ GitHub Actions `@claude` 멘션: [.github/workflows/claude.yml](./.github/workfl
 ## 📜 라이선스
 
 MIT.
+
+<!-- re-judge: SCR-708 오라클 정합 후 D3 재판정 -->

@@ -9,6 +9,18 @@ generator client {
 
 model Case {
   id              String   @id @default(cuid())
-  identifyingTerms String
+  identifyingTerms String?
+  title           String?
   createdAt       DateTime @default(now())
+  evidence        Evidence[]
+}
+
+model Evidence {
+  id         String   @id @default(cuid())
+  url        String
+  detectedAt DateTime
+  pageTitle  String
+  domain     String
+  caseId     String
+  case       Case     @relation(fields: [caseId], references: [id])
 }
