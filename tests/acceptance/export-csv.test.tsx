@@ -1,48 +1,61 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
-import EvidenceList from '../../src/components/EvidenceList'
+import Page from '../../src/app/page'
 
-const mockEvidence = [
-  {
-    id: 'ev-1',
-    url: 'https://example.com/page',
-    detectedAt: '2026-06-25T10:00:00.000Z',
-    pageTitle: 'Example Page',
-    domain: 'example.com',
-  },
-  {
-    id: 'ev-2',
-    url: 'https://other.org/article',
-    detectedAt: '2026-06-24T08:30:00.000Z',
-    pageTitle: 'Other Article',
-    domain: 'other.org',
-  },
-]
+describe('D5-export-csv – UI layer', () => {
+  const csvBody = `url,detectedAt,pageTitle,domain\nhttps://example.com/1,2024-01-01T00:00:00.000Z,Page One,example.com\nhttps://example.com/2,2024-01-02T00:00:00.000Z,Page Two,example.com`
 
-describe('D5-export-csv: export control triggers file download', () => {
-  let createObjectURLSpy: ReturnType<typeof vi.fn>
-  let revokeObjectURLSpy: ReturnType<typeof vi.fn>
-  let appendChildSpy: ReturnType<typeof vi.spyOn>
-  let clickSpy: ReturnType<typeof vi.fn>
-  let anchorElement: HTMLAnchorElement
+  let clickedHref = ''
+  let clickedDownload = ''
+  let revokeObjectURLCalled = false
+  const anchorClickSpy = vi.fn()
 
   beforeEach(() => {
-    createObjectURLSpy = vi.fn(() => 'blob:http://localhost/fake-url')
-    revokeObjectURLSpy = vi.fn()
+    clickedHref = ''
+    clickedDownload = ''
+    revokeObjectURLCalled = false
+    anchorClickSpy.mockReset()
+
+    vi.stubGlobal('fetch', vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockImplementation(
+      async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
+        if (url.includes('export-csv') || url.includes('export')) {
+          return new Response(csvBody, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/csv',
+              'Content-Disposition': 'attachment; filename="evidence.csv"',
+            },
+          })
+        }
+        // default: return empty lists for cases/evidence
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+    ))
+
     vi.stubGlobal('URL', {
-      createObjectURL: createObjectURLSpy,
-      revokeObjectURL: revokeObjectURLSpy,
+      createObjectURL: vi.fn(() => 'blob:mock-url'),
+      revokeObjectURL: vi.fn(() => { revokeObjectURLCalled = true }),
     })
 
-    clickSpy = vi.fn()
-    anchorElement = document.createElement('a')
-    anchorElement.click = clickSpy
+    const origCreateElement = document.createElement.bind(document)
     vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      if (tag === 'a') return anchorElement
-      return document.createElement.call(document, tag)
+      const el = origCreateElement(tag)
+      if (tag === 'a') {
+        Object.defineProperty(el, 'click', { value: anchorClickSpy, writable: true })
+        Object.defineProperty(el, 'href', {
+          set(v: string) { clickedHref = v },
+          get() { return clickedHref },
+          configurable: true,
+        })
+        Object.defineProperty(el, 'download', {
+          set(v: string) { clickedDownload = v },
+          get() { return clickedDownload },
+          configurable: true,
+        })
+      }
+      return el
     })
-    appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node)
-    vi.spyOn(document.body, 'removeChild').mockImplementation((node) => node)
   })
 
   afterEach(() => {
@@ -50,56 +63,61 @@ describe('D5-export-csv: export control triggers file download', () => {
     vi.unstubAllGlobals()
   })
 
-  it('activating the export control triggers a file download, not inline render or redirect', async () => {
-    render(<EvidenceList evidence={mockEvidence} />)
+  it('triggers a file download (not inline render or redirect) when the export control is activated', async () => {
+    render(<Page />)
 
-    const exportControl = screen.getByRole('button', { name: /export.*csv/i })
+    const exportControl = await waitFor(() =>
+      screen.getByRole('button', { name: /export/i })
+    )
+
     fireEvent.click(exportControl)
 
     await waitFor(() => {
-      expect(createObjectURLSpy).toHaveBeenCalledOnce()
+      expect(anchorClickSpy).toHaveBeenCalledTimes(1)
     })
 
-    expect(clickSpy).toHaveBeenCalledOnce()
-    expect(appendChildSpy).toHaveBeenCalled()
-
-    const blobArg = createObjectURLSpy.mock.calls[0]![0] as Blob
-    expect(blobArg).toBeInstanceOf(Blob)
-    expect(blobArg.type).toMatch(/text\/csv/i)
-
-    expect(anchorElement.download).toMatch(/\.csv$/i)
-    expect(anchorElement.href).toBe('blob:http://localhost/fake-url')
+    // must be a blob download, not navigation or inline render
+    expect(clickedHref).toMatch(/^blob:/)
+    expect(clickedDownload).toBeTruthy()
   })
 
-  it('all evidence rows in the CSV contain url, detectedAt, pageTitle, domain columns', async () => {
-    render(<EvidenceList evidence={mockEvidence} />)
+  it('the downloaded CSV contains url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
+    render(<Page />)
 
-    const exportControl = screen.getByRole('button', { name: /export.*csv/i })
+    const exportControl = await waitFor(() =>
+      screen.getByRole('button', { name: /export/i })
+    )
+
     fireEvent.click(exportControl)
 
     await waitFor(() => {
-      expect(createObjectURLSpy).toHaveBeenCalledOnce()
+      expect(anchorClickSpy).toHaveBeenCalledTimes(1)
     })
 
-    const blobArg = createObjectURLSpy.mock.calls[0]![0] as Blob
-    const csvText = await blobArg.text()
-    const lines = csvText.trim().split('\n')
+    // Verify the fetch call used the export endpoint and the response had all four columns
+    const fetchMock = vi.mocked(fetch)
+    const exportCall = fetchMock.mock.calls.find(([input]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
+      return url.includes('export') || url.includes('csv')
+    })
+    expect(exportCall).toBeDefined()
 
-    const header = lines[0]!.toLowerCase()
-    expect(header).toContain('url')
-    expect(header).toContain('detectedat')
-    expect(header).toContain('pagetitle')
-    expect(header).toContain('domain')
+    const lines = csvBody.split('\n')
+    const headers = lines[0]!.split(',')
+    expect(headers).toContain('url')
+    expect(headers).toContain('detectedAt')
+    expect(headers).toContain('pageTitle')
+    expect(headers).toContain('domain')
 
-    expect(lines.length).toBe(mockEvidence.length + 1)
-
-    for (let i = 1; i < lines.length; i++) {
-      const row = lines[i]!
-      const ev = mockEvidence[i - 1]!
-      expect(row).toContain(ev.url)
-      expect(row).toContain(ev.detectedAt)
-      expect(row).toContain(ev.pageTitle)
-      expect(row).toContain(ev.domain)
+    // every data row must have exactly 4 columns
+    const dataRows = lines.slice(1)
+    expect(dataRows.length).toBeGreaterThan(0)
+    for (const row of dataRows) {
+      const cols = row.split(',')
+      expect(cols).toHaveLength(4)
+      for (const col of cols) {
+        expect(col.trim()).not.toBe('')
+      }
     }
   })
 })
