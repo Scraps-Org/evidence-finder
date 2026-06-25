@@ -1,76 +1,69 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import EvidenceList from '../../src/components/EvidenceList'
 
-const MOCK_EVIDENCE = [
+const EVIDENCE = [
   {
     id: '1',
     url: 'https://example.com/page1',
-    detectedAt: '2024-01-15T10:00:00Z',
-    pageTitle: 'Example Page One',
+    detectedAt: '2026-06-01T12:00:00.000Z',
+    pageTitle: 'Example Page 1',
     domain: 'example.com',
   },
   {
     id: '2',
-    url: 'https://test.org/page2',
-    detectedAt: '2024-01-16T11:30:00Z',
-    pageTitle: 'Test Page Two',
-    domain: 'test.org',
+    url: 'https://example.com/page2',
+    detectedAt: '2026-06-02T12:00:00.000Z',
+    pageTitle: 'Example Page 2',
+    domain: 'example.com',
   },
 ]
 
-describe('D5-export-csv: export control triggers a file download', () => {
+describe('D5-export-csv: export control triggers file download', () => {
+  let createObjectURLSpy: ReturnType<typeof vi.fn>
+  let revokeObjectURLSpy: ReturnType<typeof vi.fn>
+  let appendChildSpy: ReturnType<typeof vi.spyOn>
+  let clickSpy: ReturnType<typeof vi.fn>
+  let anchorEl: HTMLAnchorElement
+
   beforeEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('clicking the export control triggers a download (createElement + click), not a redirect or inline render', () => {
-    const createdLinks: HTMLAnchorElement[] = []
-    const origCreate = document.createElement.bind(document)
-    const createSpy = vi
-      .spyOn(document, 'createElement')
-      .mockImplementation((tag: string) => {
-        const el = origCreate(tag)
-        if (tag === 'a') {
-          createdLinks.push(el as HTMLAnchorElement)
-        }
-        return el
-      })
-
-    render(<EvidenceList evidence={MOCK_EVIDENCE} caseId="case-1" />)
-
-    const exportBtn = screen.getByRole('button', { name: /export.*csv/i })
-    fireEvent.click(exportBtn)
-
-    createSpy.mockRestore()
-
-    const downloadLink = createdLinks.find(
-      (a) => a.download !== '' || a.getAttribute('download') !== null
-    )
-    expect(
-      downloadLink,
-      'Expected a hidden <a download="..."> to be created for the CSV download'
-    ).toBeDefined()
-  })
-
-  it('the CSV blob URL is set on the anchor (not a page navigation href)', () => {
-    const anchors: HTMLAnchorElement[] = []
-    const origCreate = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      const el = origCreate(tag)
-      if (tag === 'a') anchors.push(el as HTMLAnchorElement)
-      return el
+    createObjectURLSpy = vi.fn(() => 'blob:http://localhost/fake')
+    revokeObjectURLSpy = vi.fn()
+    vi.stubGlobal('URL', {
+      createObjectURL: createObjectURLSpy,
+      revokeObjectURL: revokeObjectURLSpy,
     })
 
-    render(<EvidenceList evidence={MOCK_EVIDENCE} caseId="case-1" />)
-    fireEvent.click(screen.getByRole('button', { name: /export.*csv/i }))
+    clickSpy = vi.fn()
+    anchorEl = document.createElement('a')
+    anchorEl.click = clickSpy
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'a') return anchorEl
+      return document.createElement.call(document, tag) as HTMLElement
+    })
+    appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node)
+    vi.spyOn(document.body, 'removeChild').mockImplementation((node) => node)
+  })
 
+  afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
 
-    const downloadAnchor = anchors.find(
-      (a) => a.download !== '' || a.getAttribute('download') !== null
-    )
-    expect(downloadAnchor).toBeDefined()
-    expect(downloadAnchor!.href).toMatch(/^blob:/)
+  it('triggers a file download (not inline render or redirect) when the export control is activated', () => {
+    render(<EvidenceList evidence={EVIDENCE} caseId="case-1" />)
+
+    const exportButton = screen.getByRole('button', { name: /export.*csv/i })
+    fireEvent.click(exportButton)
+
+    expect(createObjectURLSpy).toHaveBeenCalledOnce()
+    const blobArg = createObjectURLSpy.mock.calls[0]![0] as Blob
+    expect(blobArg).toBeInstanceOf(Blob)
+
+    expect(appendChildSpy).toHaveBeenCalledWith(anchorEl)
+    expect(clickSpy).toHaveBeenCalledOnce()
+
+    expect(anchorEl.download).toBeTruthy()
+    expect(anchorEl.href).toBe('blob:http://localhost/fake')
   })
 })
