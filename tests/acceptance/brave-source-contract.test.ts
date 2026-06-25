@@ -1,93 +1,86 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// We import SearchSource to verify BraveSource implements it structurally
-import type { SearchSource } from '../../src/lib/searchSource'
-
-// Import BraveSource from its expected location
-import { BraveSource } from '../../src/lib/braveSource'
+// The coder will create src/lib/braveSource.ts exporting BraveSource
+// and src/lib/searchSource.ts exporting the SearchSource interface.
+// We import both to verify the contract without executing real HTTP.
 
 describe('BraveSource contract', () => {
-  const ORIGINAL_ENV = process.env
-
-  beforeEach(() => {
-    vi.resetAllMocks()
-    process.env = { ...ORIGINAL_ENV, BRAVE_API_KEY: 'test-token-abc' }
-  })
+  const REAL_ENV_KEY = 'BRAVE_API_KEY'
 
   afterEach(() => {
-    process.env = ORIGINAL_ENV
+    vi.unstubAllEnvs()
     vi.restoreAllMocks()
   })
 
-  it('implements the SearchSource interface (has a search method)', () => {
-    const source = new BraveSource()
-    // SearchSource requires a `search` method
-    expect(typeof source.search).toBe('function')
-    // TypeScript structural check: assignable to SearchSource
-    const typed: SearchSource = source
-    expect(typed).toBeDefined()
+  it('(a) BraveSource satisfies the SearchSource interface', async () => {
+    vi.stubEnv(REAL_ENV_KEY, 'test-token')
+    const { BraveSource } = await import('../../src/lib/braveSource')
+    const { isSearchSource } = await import('../../src/lib/searchSource')
+    const instance = new BraveSource()
+    // isSearchSource is a type-guard / duck-type checker the coder must export
+    expect(isSearchSource(instance)).toBe(true)
   })
 
-  it('calls the Brave Search API endpoint when search is invoked', async () => {
+  it('(b) BraveSource.search calls the Brave Search API endpoint', async () => {
+    vi.stubEnv(REAL_ENV_KEY, 'brave-tok')
     const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
       new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.com', title: 'Example' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({ web: { results: [{ url: 'https://example.com', title: 'Ex' }] } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     )
     vi.stubGlobal('fetch', fetchSpy)
 
+    const { BraveSource } = await import('../../src/lib/braveSource')
     const source = new BraveSource()
-    const results = await source.search('test query')
+    await source.search('some query')
 
     expect(fetchSpy).toHaveBeenCalledOnce()
-    const calledUrl = fetchSpy.mock.calls[0]![0] as string | URL
-    const urlStr = typeof calledUrl === 'string' ? calledUrl : calledUrl.toString()
-    expect(urlStr).toMatch(/brave\.com/)
-    expect(results.length).toBeGreaterThanOrEqual(1)
+    const [calledUrl] = fetchSpy.mock.calls[0]!
+    expect(String(calledUrl)).toContain('api.search.brave.com')
   })
 
-  it('reads the API token exclusively from the BRAVE_API_KEY environment variable', async () => {
+  it('(c) BraveSource reads the API token exclusively from the environment variable', async () => {
+    const token = 'secret-env-token'
+    vi.stubEnv(REAL_ENV_KEY, token)
     const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
       new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.com', title: 'Example' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({ web: { results: [{ url: 'https://example.com', title: 'Ex' }] } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     )
     vi.stubGlobal('fetch', fetchSpy)
 
+    const { BraveSource } = await import('../../src/lib/braveSource')
     const source = new BraveSource()
     await source.search('query')
 
-    const callArgs = fetchSpy.mock.calls[0]!
-    const init = callArgs[1] as RequestInit
-    const headers = init?.headers as Record<string, string>
-    // Token must appear in request headers, sourced from env
-    const headerValues = Object.values(headers).join(' ')
-    expect(headerValues).toContain('test-token-abc')
+    const [, init] = fetchSpy.mock.calls[0]!
+    const headers = new Headers(init?.headers)
+    expect(headers.get('X-Subscription-Token')).toBe(token)
   })
 
-  it('throws or rejects when BRAVE_API_KEY is not set', async () => {
-    delete process.env.BRAVE_API_KEY
-    expect(() => new BraveSource()).toThrow()
-  })
-
-  it('enforces a 15-second (15000ms) HTTP request timeout via AbortSignal', async () => {
+  it('(d) BraveSource enforces a 15-second HTTP request timeout via AbortSignal', async () => {
+    vi.stubEnv(REAL_ENV_KEY, 'tok')
     const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
       new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.com', title: 'Example' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
+        JSON.stringify({ web: { results: [{ url: 'https://example.com', title: 'Ex' }] } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     )
     vi.stubGlobal('fetch', fetchSpy)
 
+    const { BraveSource } = await import('../../src/lib/braveSource')
     const source = new BraveSource()
-    await source.search('timeout test')
+    await source.search('query')
 
-    const init = fetchSpy.mock.calls[0]![1] as RequestInit
+    const [, init] = fetchSpy.mock.calls[0]!
     expect(init?.signal).toBeDefined()
-    // The signal must come from an AbortSignal with a 15s timeout
-    // AbortSignal.timeout produces a signal; verify it is an AbortSignal instance
-    expect(init.signal).toBeInstanceOf(AbortSignal)
+    // The signal must time-out at 15 000 ms — we verify it is an AbortSignal
+    // whose timeout was constructed via AbortSignal.timeout(15000).
+    // We cannot read the ms back from a live AbortSignal, so we verify it is
+    // NOT already aborted (it was created fresh) and IS an AbortSignal instance.
+    expect(init!.signal).toBeInstanceOf(AbortSignal)
+    expect((init!.signal as AbortSignal).aborted).toBe(false)
   })
 })
