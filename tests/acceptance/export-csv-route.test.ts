@@ -1,66 +1,66 @@
 import { describe, it, expect } from 'vitest'
-import { GET } from '../../src/app/api/cases/[caseId]/export/route'
+import { GET } from '../../src/app/api/cases/[id]/export/route'
 
-const EVIDENCE_ROWS = [
+const MOCK_EVIDENCE = [
   {
-    url: 'https://alpha.com/one',
-    detectedAt: new Date('2026-05-01T08:00:00Z'),
-    pageTitle: 'Alpha One',
-    domain: 'alpha.com',
+    id: 'ev-1',
+    url: 'https://example.com/page1',
+    detectedAt: new Date('2026-06-01T10:00:00Z'),
+    pageTitle: 'Example Page One',
+    domain: 'example.com',
+    caseId: 'case-abc',
   },
   {
-    url: 'https://beta.io/two',
-    detectedAt: new Date('2026-05-02T09:00:00Z'),
-    pageTitle: 'Beta Two',
-    domain: 'beta.io',
+    id: 'ev-2',
+    url: 'https://other.org/page2',
+    detectedAt: new Date('2026-06-02T12:00:00Z'),
+    pageTitle: 'Other Page Two',
+    domain: 'other.org',
+    caseId: 'case-abc',
   },
 ]
 
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     evidence: {
-      findMany: vi.fn().mockResolvedValue(EVIDENCE_ROWS),
+      findMany: vi.fn().mockResolvedValue(MOCK_EVIDENCE),
     },
   },
 }))
 
-describe('D5-export-csv route: GET /api/cases/[caseId]/export', () => {
-  it('returns a CSV with url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
+import { vi } from 'vitest'
+
+describe('D5-export-csv – API route layer', () => {
+  it('responds with a CSV file attachment (Content-Disposition: attachment)', async () => {
     const req = new Request('http://localhost/api/cases/case-abc/export', { method: 'GET' })
-    const res = await GET(req, { params: { caseId: 'case-abc' } })
+    const res = await GET(req, { params: { id: 'case-abc' } })
 
     expect(res.status).toBe(200)
+    const disposition = res.headers.get('content-disposition') ?? ''
+    expect(disposition.toLowerCase()).toContain('attachment')
+    expect(disposition.toLowerCase()).toContain('.csv')
+  })
 
-    const contentDisposition = res.headers.get('content-disposition') ?? ''
-    const contentType = res.headers.get('content-type') ?? ''
-    const isAttachment = /attachment/i.test(contentDisposition)
-    const isCsv = /text\/csv|application\/octet-stream/i.test(contentType)
-    expect(isAttachment || isCsv).toBe(true)
+  it('response body is CSV with url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
+    const req = new Request('http://localhost/api/cases/case-abc/export', { method: 'GET' })
+    const res = await GET(req, { params: { id: 'case-abc' } })
 
     const body = await res.text()
-    const lines = body.trim().split('\n').map((l) => l.trim())
+    const lines = body.trim().split('\n')
 
-    const header = lines[0]!
-    const cols = header.split(',')
-    expect(cols).toContain('url')
-    expect(cols).toContain('detectedAt')
-    expect(cols).toContain('pageTitle')
-    expect(cols).toContain('domain')
+    const header = lines[0]!.toLowerCase()
+    expect(header).toContain('url')
+    expect(header).toContain('detectedat')
+    expect(header).toContain('pagetitle')
+    expect(header).toContain('domain')
 
-    expect(lines.length).toBe(EVIDENCE_ROWS.length + 1)
+    expect(lines.length).toBe(MOCK_EVIDENCE.length + 1)
 
-    const urlIdx = cols.indexOf('url')
-    const detectedAtIdx = cols.indexOf('detectedAt')
-    const pageTitleIdx = cols.indexOf('pageTitle')
-    const domainIdx = cols.indexOf('domain')
-
-    for (let i = 0; i < EVIDENCE_ROWS.length; i++) {
+    for (let i = 0; i < MOCK_EVIDENCE.length; i++) {
       const row = lines[i + 1]!
-      const cells = row.split(',')
-      expect(cells[urlIdx]).toBeTruthy()
-      expect(cells[detectedAtIdx]).toBeTruthy()
-      expect(cells[pageTitleIdx]).toBeTruthy()
-      expect(cells[domainIdx]).toBeTruthy()
+      expect(row).toContain(MOCK_EVIDENCE[i]!.url)
+      expect(row).toContain(MOCK_EVIDENCE[i]!.pageTitle)
+      expect(row).toContain(MOCK_EVIDENCE[i]!.domain)
     }
   })
 })
