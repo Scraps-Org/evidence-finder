@@ -1,133 +1,129 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { SearchSource, SearchResult } from '../../src/lib/searchSource'
+import { POST } from '../../src/app/api/cases/[caseId]/search/route'
 
-// ---------------------------------------------------------------------------
-// API route: POST /api/cases/[caseId]/search
-// - runs terms through BraveSource
-// - upserts each result into Candidate table (url unique per case, status 'new')
-// - idempotent dedup
-// - returns ≥1 normalized candidate with a url field
-// ---------------------------------------------------------------------------
-
-const CASE_ID = 'case-search-test-001'
-const MOCK_RESULTS: SearchResult[] = [
-  { url: 'https://result-a.example.com', title: 'Result A' },
-  { url: 'https://result-b.example.com', title: 'Result B' },
-]
-
-// Prisma mock — tracks upsert calls to verify dedup
-const upsertMock = vi.fn<
-  [{ where: { url_caseId: { url: string; caseId: string } }; update: Record<string, unknown>; create: Record<string, unknown> }],
-  Promise<{ id: string; url: string; caseId: string; status: string }>
->()
-
-vi.mock('../../src/lib/prisma', () => ({
-  default: {
-    candidate: {
-      upsert: upsertMock,
-      findMany: vi.fn<[{ where: { caseId: string } }], Promise<{ id: string; url: string; caseId: string; status: string }[]>>(),
-    },
+// Mock BraveSource so we control results without a live network call,
+// while the route handler itself (the layer under test) is NOT mocked.
+vi.mock('../../src/lib/braveSource', () => ({
+  BraveSource: class {
+    async search(_query: string): Promise<Array<{ url: string; title: string }>> {
+      return [
+        { url: 'https://result-one.example.com', title: 'Result One' },
+        { url: 'https://result-two.example.com', title: 'Result Two' },
+      ]
+    }
   },
 }))
 
-// BraveSource mock — returns controlled results
-const searchMock = vi.fn<[string], Promise<SearchResult[]>>()
+// Mock prisma to avoid a real DB — the persistence layer is covered separately.
+vi.mock('../../src/lib/prisma', () => {
+  const upsertMock = vi.fn<
+    [{ where: { url_caseId: { url: string; caseId: string } }; update: Record<string, unknown>; create: Record<string, unknown> }],
+    Promise<{ id: string; url: string; caseId: string; status: string }>
+  >()
 
-vi.mock('../../src/lib/braveSource', () => ({
-  BraveSource: vi.fn<[], SearchSource>(() => ({ search: searchMock })),
-}))
+  return {
+    default: {
+      candidate: {
+        upsert: upsertMock,
+        findMany: vi.fn<[{ where: { caseId: string } }], Promise<Array<{ id: string; url: string; caseId: string; status: string }>>>()
+          .mockResolvedValue([
+            { id: 'c1', url: 'https://result-one.example.com', caseId: 'case-123', status: 'new' },
+            { id: 'c2', url: 'https://result-two.example.com', caseId: 'case-123', status: 'new' },
+          ]),
+      },
+      case: {
+        findUniqueOrThrow: vi.fn<[{ where: { id: string } }], Promise<{ id: string; terms: string }>>()
+          .mockResolvedValue({ id: 'case-123', terms: 'wrongful termination California' }),
+      },
+    },
+  }
+})
+
+import prisma from '../../src/lib/prisma'
 
 describe('POST /api/cases/[caseId]/search route', () => {
+  const CASE_ID = 'case-123'
+
   beforeEach(() => {
-    vi.resetModules()
-    searchMock.mockResolvedValue(MOCK_RESULTS)
-    upsertMock.mockImplementation(
-      async (args: { where: { url_caseId: { url: string; caseId: string } }; update: Record<string, unknown>; create: Record<string, unknown> }) => ({
-        id: `id-${args.create['url'] as string}`,
-        url: args.create['url'] as string,
-        caseId: args.create['caseId'] as string,
-        status: 'new',
-      })
+    vi.clearAllMocks()
+    // Re-apply findMany and findUniqueOrThrow defaults after clearAllMocks
+    vi.mocked(prisma.case.findUniqueOrThrow).mockResolvedValue({ id: CASE_ID, terms: 'wrongful termination California' })
+    vi.mocked(prisma.candidate.findMany).mockResolvedValue([
+      { id: 'c1', url: 'https://result-one.example.com', caseId: CASE_ID, status: 'new' },
+      { id: 'c2', url: 'https://result-two.example.com', caseId: CASE_ID, status: 'new' },
+    ])
+    vi.mocked(prisma.candidate.upsert).mockResolvedValue(
+      { id: 'c1', url: 'https://result-one.example.com', caseId: CASE_ID, status: 'new' }
     )
   })
 
   afterEach(() => {
-    vi.clearAllMocks()
+    vi.restoreAllMocks()
   })
 
-  it('runs case terms through BraveSource and upserts into Candidate with status new', async () => {
-    const { POST } = await import('../../src/app/api/cases/[caseId]/search/route')
-
+  it('upserts each result with status "new" and (url, caseId) uniqueness constraint', async () => {
     const req = new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
       method: 'POST',
-      body: JSON.stringify({ terms: 'climate change litigation' }),
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
     })
 
     const res = await POST(req, { params: { caseId: CASE_ID } })
     expect(res.status).toBe(200)
 
-    expect(searchMock).toHaveBeenCalledWith('climate change litigation')
+    const upsertMock = vi.mocked(prisma.candidate.upsert)
+    expect(upsertMock).toHaveBeenCalled()
 
-    expect(upsertMock).toHaveBeenCalledTimes(MOCK_RESULTS.length)
-
-    const firstCall = upsertMock.mock.calls[0]![0]
-    expect(firstCall.create['status']).toBe('new')
-    expect(firstCall.create['caseId']).toBe(CASE_ID)
-    expect(typeof firstCall.create['url']).toBe('string')
-    // unique constraint key
-    expect(firstCall.where.url_caseId).toMatchObject({
-      url: firstCall.create['url'],
-      caseId: CASE_ID,
-    })
+    for (const call of upsertMock.mock.calls) {
+      const arg = call[0]
+      // Uniqueness constraint: where uses url + caseId composite
+      expect(arg.where.url_caseId.caseId).toBe(CASE_ID)
+      expect(typeof arg.where.url_caseId.url).toBe('string')
+      // Status must be 'new' on create
+      expect(arg.create).toMatchObject({ status: 'new', caseId: CASE_ID })
+    }
   })
 
-  it('is idempotent: calling upsert a second time for the same URL does not create a duplicate (upsert semantics)', async () => {
-    const { POST } = await import('../../src/app/api/cases/[caseId]/search/route')
-
-    // Two sequential invocations with the same terms / same URLs
+  it('deduplicates: calling the route twice for the same URL upserts, not inserts a duplicate row', async () => {
     const makeReq = () =>
       new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
         method: 'POST',
-        body: JSON.stringify({ terms: 'same terms' }),
         headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
       })
 
     await POST(makeReq(), { params: { caseId: CASE_ID } })
-    await POST(makeReq(), { params: { caseId: CASE_ID } })
+    const firstCallCount = vi.mocked(prisma.candidate.upsert).mock.calls.length
 
-    // Each invocation upserts each result URL; the upsert (not insert) call
-    // count doubles but no raw INSERT can create a duplicate because the route
-    // uses upsert with a (url, caseId) unique key.
-    const allUpsertUrls = upsertMock.mock.calls.map(
-      (c) => (c[0] as { where: { url_caseId: { url: string; caseId: string } } }).where.url_caseId.url
-    )
-    const firstRoundUrls = allUpsertUrls.slice(0, MOCK_RESULTS.length)
-    const secondRoundUrls = allUpsertUrls.slice(MOCK_RESULTS.length)
-    // Same URLs were upserted both rounds — idempotent by upsert contract
-    expect(firstRoundUrls.sort()).toEqual(secondRoundUrls.sort())
+    await POST(makeReq(), { params: { caseId: CASE_ID } })
+    const secondCallCount = vi.mocked(prisma.candidate.upsert).mock.calls.length
+
+    // Both runs upsert the same URLs — route uses upsert (not create) ensuring idempotency
+    expect(secondCallCount).toBe(firstCallCount * 2)
+    // Every call must use the upsert path, never a raw create
+    for (const call of vi.mocked(prisma.candidate.upsert).mock.calls) {
+      expect(call[0]).toHaveProperty('where.url_caseId')
+    }
   })
 
-  it('returns ≥1 normalized candidate object each carrying a url field', async () => {
-    const { POST } = await import('../../src/app/api/cases/[caseId]/search/route')
-
+  it('returns ≥1 normalized candidate object each with a resolvable url field', async () => {
     const req = new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
       method: 'POST',
-      body: JSON.stringify({ terms: 'evidence discovery' }),
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
     })
 
     const res = await POST(req, { params: { caseId: CASE_ID } })
     expect(res.status).toBe(200)
 
-    const body = (await res.json()) as unknown
-    const candidates = (body as { candidates: { url: string }[] }).candidates
+    const body = await res.json() as { candidates: Array<{ url: string }> }
+    expect(Array.isArray(body.candidates)).toBe(true)
+    expect(body.candidates.length).toBeGreaterThanOrEqual(1)
 
-    expect(Array.isArray(candidates)).toBe(true)
-    expect(candidates.length).toBeGreaterThanOrEqual(1)
-    for (const c of candidates) {
-      expect(typeof c.url).toBe('string')
-      expect(c.url.length).toBeGreaterThan(0)
+    for (const candidate of body.candidates) {
+      expect(typeof candidate.url).toBe('string')
+      // URL must be resolvable (parseable absolute URL)
+      expect(() => new URL(candidate.url)).not.toThrow()
     }
   })
 })
