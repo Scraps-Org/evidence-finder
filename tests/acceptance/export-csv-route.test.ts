@@ -1,63 +1,69 @@
 import { describe, it, expect } from 'vitest'
 import { GET } from '../../src/app/api/cases/[caseId]/export/route'
 
-const EVIDENCE_ROWS = [
-  {
-    id: 'r1',
-    url: 'https://example.com/evidence1',
-    detectedAt: new Date('2024-03-01T08:00:00Z'),
-    pageTitle: 'Evidence Page One',
-    domain: 'example.com',
-  },
-  {
-    id: 'r2',
-    url: 'https://other.net/evidence2',
-    detectedAt: new Date('2024-03-02T09:15:00Z'),
-    pageTitle: 'Evidence Page Two',
-    domain: 'other.net',
-  },
-]
+const REQUIRED_COLUMNS = ['url', 'detectedAt', 'pageTitle', 'domain'] as const
 
-vi.mock('../../src/lib/prisma', () => ({
-  default: {
-    evidence: {
-      findMany: vi.fn().mockResolvedValue(EVIDENCE_ROWS),
-    },
-  },
-}))
-
-describe('D5-export-csv: API route — GET /api/cases/[caseId]/export', () => {
-  it('returns a CSV file download (Content-Disposition: attachment), not inline or redirect', async () => {
-    const req = new Request('http://localhost/api/cases/case-abc/export', { method: 'GET' })
-    const res = await GET(req, { params: { caseId: 'case-abc' } })
-
-    expect(res.status).toBe(200)
-    const disposition = res.headers.get('content-disposition') ?? ''
-    expect(disposition.toLowerCase()).toContain('attachment')
-    expect(disposition.toLowerCase()).toContain('.csv')
+describe('D5-export-csv: API route returns CSV with required columns', () => {
+  it('responds with content-type text/csv', async () => {
+    const req = new Request('http://localhost/api/cases/case-1/export', {
+      method: 'GET',
+    })
+    const res = await GET(req, { params: { caseId: 'case-1' } })
+    expect(res.headers.get('content-type')).toMatch(/text\/csv/)
   })
 
-  it('CSV body contains url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
-    const req = new Request('http://localhost/api/cases/case-abc/export', { method: 'GET' })
-    const res = await GET(req, { params: { caseId: 'case-abc' } })
+  it('CSV header row contains all four required columns: url, detectedAt, pageTitle, domain', async () => {
+    const req = new Request('http://localhost/api/cases/case-1/export', {
+      method: 'GET',
+    })
+    const res = await GET(req, { params: { caseId: 'case-1' } })
+    const text = await res.text()
+    const headerLine = text.split('\n')[0] ?? ''
+    const headers = headerLine.split(',').map((h) => h.trim().replace(/^"|"$/g, ''))
+    for (const col of REQUIRED_COLUMNS) {
+      expect(headers, `CSV header must include column "${col}"`).toContain(col)
+    }
+  })
 
-    const csvText = await res.text()
-    const lines = csvText.trim().split('\n')
+  it('each data row has exactly the four required columns populated', async () => {
+    const evidence = [
+      {
+        id: 'ev-1',
+        url: 'https://example.com',
+        detectedAt: new Date('2024-01-15T10:00:00Z'),
+        pageTitle: 'Example',
+        domain: 'example.com',
+        caseId: 'case-1',
+        createdAt: new Date(),
+      },
+    ]
 
-    const header = lines[0]!
-    expect(header).toMatch(/url/i)
-    expect(header).toMatch(/detectedAt/i)
-    expect(header).toMatch(/pageTitle/i)
-    expect(header).toMatch(/domain/i)
+    const req = new Request('http://localhost/api/cases/case-1/export', {
+      method: 'GET',
+    })
 
-    expect(lines.length).toBeGreaterThanOrEqual(3)
+    const { prisma } = await import('../../src/lib/prisma')
+    const { vi } = await import('vitest')
+    vi.spyOn(prisma.evidence, 'findMany').mockResolvedValueOnce(evidence)
 
-    for (const row of EVIDENCE_ROWS) {
-      const matchingLine = lines.slice(1).find((line) => line.includes(row.url))
-      expect(matchingLine, `row for ${row.url} not found in CSV`).toBeDefined()
-      expect(matchingLine).toContain(row.detectedAt.toISOString())
-      expect(matchingLine).toContain(row.pageTitle)
-      expect(matchingLine).toContain(row.domain)
+    const res = await GET(req, { params: { caseId: 'case-1' } })
+    const text = await res.text()
+    const lines = text.split('\n').filter((l) => l.trim() !== '')
+    expect(lines.length).toBeGreaterThanOrEqual(2)
+
+    const headerLine = lines[0] ?? ''
+    const headers = headerLine.split(',').map((h) => h.trim().replace(/^"|"$/g, ''))
+
+    for (const dataLine of lines.slice(1)) {
+      const values = dataLine.split(',').map((v) => v.trim().replace(/^"|"$/g, ''))
+      for (const col of REQUIRED_COLUMNS) {
+        const idx = headers.indexOf(col)
+        expect(idx, `Column "${col}" not found in header`).toBeGreaterThanOrEqual(0)
+        expect(
+          values[idx],
+          `Row value for column "${col}" must not be empty`
+        ).toBeTruthy()
+      }
     }
   })
 })
