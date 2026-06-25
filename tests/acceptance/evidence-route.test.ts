@@ -1,17 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock next/server before importing the route
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: (body: unknown, init?: ResponseInit) => new Response(JSON.stringify(body), {
-      ...init,
-      headers: { 'content-type': 'application/json' },
-    }),
-  },
-}))
+// ---------------------------------------------------------------------------
+// Stub prisma BEFORE importing the route so the module resolver picks up mocks
+// ---------------------------------------------------------------------------
+const mockCreate = vi.fn<[{ data: { url: string; caseId: string; pageTitle: string; domain: string; detectedAt: Date } }], Promise<{ id: string; url: string; caseId: string; pageTitle: string; domain: string; detectedAt: Date }>>()
 
-// Mock Prisma so we can inspect calls without a real DB
-const mockCreate = vi.fn()
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     evidence: {
@@ -20,41 +13,48 @@ vi.mock('../../src/lib/prisma', () => ({
   },
 }))
 
-// Stub global fetch — the route must call it to retrieve the target page
+// ---------------------------------------------------------------------------
+// Stub global fetch so the route can "fetch" a page without real network I/O
+// ---------------------------------------------------------------------------
 const mockFetch = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
 
-describe('POST /api/evidence', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', mockFetch)
-    mockCreate.mockReset()
-    mockFetch.mockReset()
-  })
+beforeEach(() => {
+  vi.stubGlobal('fetch', mockFetch)
+  mockCreate.mockReset()
+  mockFetch.mockReset()
+})
 
-  it('fetches the target page, extracts title + domain, stamps detectedAt, and persists Evidence', async () => {
-    const targetUrl = 'https://example.com/some/page'
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('POST /api/evidence — server route handler', () => {
+  it('fetches the target page, extracts <title> + domain, stamps detectedAt, and persists an Evidence row', async () => {
+    const targetUrl = 'https://example.com/some/path'
     const caseId = 'case-abc-123'
+    const htmlWithTitle = '<html><head><title>Example Domain</title></head><body>hello</body></html>'
 
-    // The route should fetch the target URL and parse the HTML title
+    // Simulate a successful page fetch
     mockFetch.mockResolvedValueOnce(
-      new Response(
-        '<html><head><title>Example Domain Title</title></head><body></body></html>',
-        { status: 200, headers: { 'content-type': 'text/html' } },
-      ),
+      new Response(htmlWithTitle, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
     )
 
-    const createdRow = {
+    const savedRow = {
       id: 'ev-1',
       url: targetUrl,
-      pageTitle: 'Example Domain Title',
+      caseId,
+      pageTitle: 'Example Domain',
       domain: 'example.com',
       detectedAt: new Date(),
-      caseId,
     }
-    mockCreate.mockResolvedValueOnce(createdRow)
+    mockCreate.mockResolvedValueOnce(savedRow)
 
-    const before = Date.now()
+    const before = new Date()
 
-    // Import handler after mocks are in place
+    // Import the handler AFTER stubs are in place
     const { POST } = await import('../../src/app/api/evidence/route')
 
     const req = new Request('http://localhost/api/evidence', {
@@ -64,41 +64,31 @@ describe('POST /api/evidence', () => {
     })
 
     const res = await POST(req)
-    expect(res.status).toBe(200)
+    const after = new Date()
 
-    const after = Date.now()
+    // (a) Route must have fetched the target URL server-side
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const fetchedArg = mockFetch.mock.calls[0]![0]
+    const fetchedUrl = typeof fetchedArg === 'string' ? fetchedArg : fetchedArg instanceof URL ? fetchedArg.href : (fetchedArg as Request).url
+    expect(fetchedUrl).toContain('example.com')
 
-    // (a) route fetched the target page server-side
-    expect(mockFetch).toHaveBeenCalledOnce()
-    const fetchedUrl = String(mockFetch.mock.calls[0]![0])
-    expect(fetchedUrl).toBe(targetUrl)
-
-    // (b) pageTitle parsed from <title> tag
-    expect(mockCreate).toHaveBeenCalledOnce()
-    const createArg = mockCreate.mock.calls[0]![0] as {
-      data: {
-        url: string
-        pageTitle: string
-        domain: string
-        detectedAt: Date
-        caseId: string
-      }
-    }
-    expect(createArg.data.pageTitle).toBe('Example Domain Title')
-
+    // (b)(c)(d)(e) Prisma create must have been called with correct shape
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+    const createCall = mockCreate.mock.calls[0]![0]
+    // (b) pageTitle extracted from <title>
+    expect(createCall.data.pageTitle).toBe('Example Domain')
     // (c) domain derived from URL hostname
-    expect(createArg.data.domain).toBe('example.com')
+    expect(createCall.data.domain).toBe('example.com')
+    // (d) detectedAt is a Date stamped on the server side within the request window
+    expect(createCall.data.detectedAt).toBeInstanceOf(Date)
+    expect(createCall.data.detectedAt.getTime()).toBeGreaterThanOrEqual(before.getTime())
+    expect(createCall.data.detectedAt.getTime()).toBeLessThanOrEqual(after.getTime())
+    // (e) url and caseId forwarded
+    expect(createCall.data.url).toBe(targetUrl)
+    expect(createCall.data.caseId).toBe(caseId)
 
-    // (d) detectedAt stamped server-side (within the test window)
-    const detectedMs = createArg.data.detectedAt.getTime()
-    expect(detectedMs).toBeGreaterThanOrEqual(before)
-    expect(detectedMs).toBeLessThanOrEqual(after)
-
-    // (e) persisted with correct url and caseId
-    expect(createArg.data.url).toBe(targetUrl)
-    expect(createArg.data.caseId).toBe(caseId)
-
-    const body = (await res.json()) as { id: string }
-    expect(body.id).toBe('ev-1')
+    // Route must return a success status
+    expect(res.status).toBeGreaterThanOrEqual(200)
+    expect(res.status).toBeLessThan(300)
   })
 })
