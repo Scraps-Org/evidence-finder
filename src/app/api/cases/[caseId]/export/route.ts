@@ -9,10 +9,7 @@ function csvEscape(value: string): string {
   return value;
 }
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ caseId: string }> },
-) {
+export async function GET(req: Request, { params }: { params: Promise<{ caseId: string }> }) {
   const { caseId } = await params;
 
   let rows: Array<{
