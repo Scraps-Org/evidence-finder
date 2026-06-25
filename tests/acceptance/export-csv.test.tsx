@@ -2,84 +2,103 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import EvidenceList from '../../src/components/EvidenceList'
 
-const mockEvidence = [
-  {
-    id: 'ev-1',
-    url: 'https://example.com/page1',
-    detectedAt: '2026-06-25T10:00:00.000Z',
-    pageTitle: 'Example Page One',
-    domain: 'example.com',
-  },
-  {
-    id: 'ev-2',
-    url: 'https://other.org/page2',
-    detectedAt: '2026-06-25T11:00:00.000Z',
-    pageTitle: 'Other Page Two',
-    domain: 'other.org',
-  },
-]
-
-describe('D5-export-csv – UI layer', () => {
-  let anchorClickSpy: ReturnType<typeof vi.fn>
-  let createdAnchor: HTMLAnchorElement
+describe('D5-export-csv UI', () => {
+  const evidence = [
+    {
+      id: '1',
+      url: 'https://example.com/page1',
+      detectedAt: new Date('2024-01-15T10:00:00Z').toISOString(),
+      pageTitle: 'Example Page One',
+      domain: 'example.com',
+    },
+    {
+      id: '2',
+      url: 'https://other.org/page2',
+      detectedAt: new Date('2024-01-16T12:00:00Z').toISOString(),
+      pageTitle: 'Other Page Two',
+      domain: 'other.org',
+    },
+  ]
 
   beforeEach(() => {
-    anchorClickSpy = vi.fn()
-    createdAnchor = document.createElement('a')
-    vi.spyOn(createdAnchor, 'click').mockImplementation(anchorClickSpy)
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      if (tag === 'a') return createdAnchor
-      return document.createElement(tag)
+    vi.restoreAllMocks()
+  })
+
+  it('triggers a file download (not inline render or redirect) when the export control is activated', () => {
+    const createObjectURL = vi.fn(() => 'blob:http://localhost/fake-url')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
     })
+
+    const clickSpy = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = originalCreateElement(tag)
+      if (tag === 'a') {
+        Object.defineProperty(el, 'click', { value: clickSpy, writable: true })
+        Object.defineProperty(el, 'download', { value: '', writable: true })
+        Object.defineProperty(el, 'href', { value: '', writable: true })
+      }
+      return el
+    })
+
+    render(<EvidenceList evidence={evidence} caseId="case-123" />)
+
+    const exportControl = screen.getByRole('button', { name: /export/i })
+    fireEvent.click(exportControl)
+
+    expect(createObjectURL).toHaveBeenCalledOnce()
+    expect(clickSpy).toHaveBeenCalledOnce()
   })
 
-  it('export control triggers a file download (not inline render or redirect)', () => {
-    render(<EvidenceList evidence={mockEvidence} caseId="case-123" />)
+  it('downloaded CSV contains url, detectedAt, pageTitle, domain columns for every evidence row', () => {
+    let capturedBlob: Blob | undefined
+    const createObjectURL = vi.fn((blob: Blob) => {
+      capturedBlob = blob
+      return 'blob:http://localhost/fake-url'
+    })
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+    })
 
-    const exportButton = screen.getByRole('button', { name: /export.*csv/i })
-    fireEvent.click(exportButton)
+    const originalCreateElement = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = originalCreateElement(tag)
+      if (tag === 'a') {
+        Object.defineProperty(el, 'click', { value: vi.fn(), writable: true })
+        Object.defineProperty(el, 'download', { value: '', writable: true })
+        Object.defineProperty(el, 'href', { value: '', writable: true })
+      }
+      return el
+    })
 
-    // A download is triggered via an anchor with a download attribute, not a redirect
-    expect(createdAnchor.download).toBeTruthy()
-    expect(anchorClickSpy).toHaveBeenCalledTimes(1)
-  })
+    render(<EvidenceList evidence={evidence} caseId="case-123" />)
+    fireEvent.click(screen.getByRole('button', { name: /export/i }))
 
-  it('downloaded CSV contains url, detectedAt, pageTitle, domain for every evidence row', () => {
-    render(<EvidenceList evidence={mockEvidence} caseId="case-123" />)
+    expect(capturedBlob).toBeDefined()
 
-    const exportButton = screen.getByRole('button', { name: /export.*csv/i })
-    fireEvent.click(exportButton)
+    return capturedBlob!.text().then((csvText) => {
+      const lines = csvText.trim().split('\n')
+      // header row
+      expect(lines[0]).toMatch(/url/i)
+      expect(lines[0]).toMatch(/detectedAt/i)
+      expect(lines[0]).toMatch(/pageTitle/i)
+      expect(lines[0]).toMatch(/domain/i)
 
-    const href = createdAnchor.href
-    // href is a blob: or data: URI; decode the data URI if used
-    let csvContent: string
-    if (href.startsWith('data:')) {
-      csvContent = decodeURIComponent(href.split(',')[1]!)
-    } else {
-      // blob URL — assert the object was created via URL.createObjectURL
-      // In jsdom, blob URLs are created synchronously; fall back to checking href is set
-      expect(href).toBeTruthy()
-      // Re-derive CSV by inspecting what would have been passed to Blob
-      // Since we can't read a blob URL in jsdom, check the column contract via header row
-      // The download attribute proves a file download, not a redirect.
-      expect(createdAnchor.download).toMatch(/\.csv$/i)
-      return
-    }
+      // one data row per evidence item
+      expect(lines).toHaveLength(evidence.length + 1)
 
-    const lines = csvContent.trim().split('\n')
-    const header = lines[0]!.toLowerCase()
-    expect(header).toContain('url')
-    expect(header).toContain('detectedat')
-    expect(header).toContain('pagetitle')
-    expect(header).toContain('domain')
-
-    // Every data row has all 4 columns populated
-    mockEvidence.forEach((ev, i) => {
-      const row = lines[i + 1]!
-      expect(row).toContain(ev.url)
-      expect(row).toContain(ev.detectedAt)
-      expect(row).toContain(ev.pageTitle)
-      expect(row).toContain(ev.domain)
+      for (const ev of evidence) {
+        const row = lines.find((l) => l.includes(ev.url))
+        expect(row).toBeDefined()
+        expect(row).toContain(ev.url)
+        expect(row).toContain(ev.detectedAt)
+        expect(row).toContain(ev.pageTitle)
+        expect(row).toContain(ev.domain)
+      }
     })
   })
 })
