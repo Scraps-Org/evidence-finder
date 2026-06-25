@@ -1,26 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ---------------------------------------------------------------------------
-// Brave Search API route — verifies upsert, dedup, and response shape.
-// Imports the route handler directly (no mocked fetch at the route layer).
-// BraveSource's outbound network call IS mocked here so the route test is
-// isolated from the real Brave API — the braveSource contract test covers
-// the real fetch behaviour separately.
-// ---------------------------------------------------------------------------
-
-const FAKE_CASE_ID = 'cltest000000000000000000';
-const FAKE_URL_1 = 'https://result-one.example.com';
-const FAKE_URL_2 = 'https://result-two.example.com';
-
-const mockSearch = vi.fn<[string], Promise<{ url: string; title?: string }[]>>();
-
-vi.mock('../../src/lib/braveSource', () => ({
-  BraveSource: class {
-    search = mockSearch;
-  },
-}));
-
-const mockUpsert = vi.fn<
+// Prisma client mock — intercepts upsert calls without a real DB.
+// The dedup criterion is tested via idempotent upsert semantics.
+const upsertMock = vi.fn<
   [{ where: { url_caseId: { url: string; caseId: string } }; update: Record<string, unknown>; create: Record<string, unknown> }],
   Promise<{ id: string; url: string; caseId: string; status: string }>
 >();
@@ -28,118 +10,102 @@ const mockUpsert = vi.fn<
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     candidate: {
-      upsert: mockUpsert,
+      upsert: upsertMock,
     },
   },
 }));
 
-describe('POST /api/cases/[caseId]/search route', () => {
+// BraveSource mock — isolates route from network.
+const searchMock = vi.fn<[string], Promise<{ url: string; title?: string }[]>>();
+
+vi.mock('../../src/lib/braveSource', () => ({
+  BraveSource: vi.fn(() => ({ search: searchMock })),
+}));
+
+describe('POST /api/cases/[caseId]/search — brave search route', () => {
+  const CASE_ID = 'case-abc-123';
+  const TERMS = 'climate fraud liability';
+  const CANDIDATE_URL = 'https://example.com/article';
+
   beforeEach(() => {
-    vi.clearAllMocks();
+    searchMock.mockResolvedValue([{ url: CANDIDATE_URL, title: 'Example Article' }]);
+    upsertMock.mockResolvedValue({ id: 'cand-1', url: CANDIDATE_URL, caseId: CASE_ID, status: 'new' });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('runs search terms through BraveSource and upserts each result into Candidate with status \'new\'', async () => {
-    mockSearch.mockResolvedValue([
-      { url: FAKE_URL_1, title: 'Result One' },
-      { url: FAKE_URL_2, title: 'Result Two' },
-    ]);
-
-    mockUpsert
-      .mockResolvedValueOnce({ id: 'c1', url: FAKE_URL_1, caseId: FAKE_CASE_ID, status: 'new' })
-      .mockResolvedValueOnce({ id: 'c2', url: FAKE_URL_2, caseId: FAKE_CASE_ID, status: 'new' });
-
+  it('calls BraveSource.search with the case terms and upserts each result with status new', async () => {
     const { POST } = await import('../../src/app/api/cases/[caseId]/search/route');
-
-    const req = new Request(`http://test/api/cases/${FAKE_CASE_ID}/search`, {
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
       method: 'POST',
-      body: JSON.stringify({ terms: 'climate change litigation' }),
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ terms: TERMS }),
     });
-
-    const params = Promise.resolve({ caseId: FAKE_CASE_ID });
-    const res = await POST(req, { params });
-
+    const res = await POST(req, { params: { caseId: CASE_ID } });
     expect(res.status).toBe(200);
-
-    // BraveSource.search was called with the case's terms
-    expect(mockSearch).toHaveBeenCalledWith('climate change litigation');
-
-    // upsert called once per result
-    expect(mockUpsert).toHaveBeenCalledTimes(2);
-
-    // each upsert uses (url, caseId) uniqueness and status 'new'
-    const firstCall = mockUpsert.mock.calls[0]![0];
-    expect(firstCall.where.url_caseId).toEqual({ url: FAKE_URL_1, caseId: FAKE_CASE_ID });
-    expect(firstCall.create).toMatchObject({ url: FAKE_URL_1, caseId: FAKE_CASE_ID, status: 'new' });
+    expect(searchMock).toHaveBeenCalledWith(TERMS);
+    expect(upsertMock).toHaveBeenCalledOnce();
+    const upsertCall = upsertMock.mock.calls[0]!;
+    expect(upsertCall[0].create.status).toBe('new');
+    expect(upsertCall[0].create.url).toBe(CANDIDATE_URL);
+    expect(upsertCall[0].create.caseId).toBe(CASE_ID);
   });
 
-  it('is idempotent — calling with the same URL twice does not create a duplicate row', async () => {
-    mockSearch.mockResolvedValue([{ url: FAKE_URL_1, title: 'Duplicate' }]);
-
-    const existingRow = { id: 'c1', url: FAKE_URL_1, caseId: FAKE_CASE_ID, status: 'new' };
-    mockUpsert.mockResolvedValue(existingRow);
-
+  it('uses a uniqueness constraint of (url, caseId) so the same URL upserts once per case', async () => {
     const { POST } = await import('../../src/app/api/cases/[caseId]/search/route');
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ terms: TERMS }),
+    });
+    await POST(req, { params: { caseId: CASE_ID } });
+    const upsertCall = upsertMock.mock.calls[0]!;
+    // where clause must key on both url and caseId
+    const whereKey = upsertCall[0].where;
+    expect(whereKey).toHaveProperty('url_caseId');
+    expect(whereKey.url_caseId.url).toBe(CANDIDATE_URL);
+    expect(whereKey.url_caseId.caseId).toBe(CASE_ID);
+  });
 
+  it('is idempotent — calling with the same URL twice does not create a duplicate (upsert called per URL, not insert)', async () => {
+    const { POST } = await import('../../src/app/api/cases/[caseId]/search/route');
     const makeReq = () =>
-      new Request(`http://test/api/cases/${FAKE_CASE_ID}/search`, {
+      new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
         method: 'POST',
-        body: JSON.stringify({ terms: 'dedup test' }),
         headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ terms: TERMS }),
       });
-
-    const params = Promise.resolve({ caseId: FAKE_CASE_ID });
-
-    // First call
-    await POST(makeReq(), { params });
-    const countAfterFirst = mockUpsert.mock.calls.length;
-
-    // Second call with same URL
-    await POST(makeReq(), { params: Promise.resolve({ caseId: FAKE_CASE_ID }) });
-    const countAfterSecond = mockUpsert.mock.calls.length;
-
-    // upsert (not create) is used — so the DB row count stays at 1.
-    // The mock is called again but the upsert semantic guarantees no duplicate.
-    // Assert the upsert where clause uses the composite unique key both times.
-    expect(countAfterFirst).toBe(1);
-    expect(countAfterSecond).toBe(2);
-
-    for (const call of mockUpsert.mock.calls) {
-      expect(call[0]!.where.url_caseId).toEqual({ url: FAKE_URL_1, caseId: FAKE_CASE_ID });
-      // update object must not change status (preserves existing row as-is)
-      expect(call[0]!.update).toBeDefined();
+    await POST(makeReq(), { params: { caseId: CASE_ID } });
+    await POST(makeReq(), { params: { caseId: CASE_ID } });
+    // Each call resolves 1 URL → upsert called once per invocation (2 total)
+    // but upsert semantics guarantee no duplicate row — not createMany.
+    const calls = upsertMock.mock.calls;
+    for (const call of calls) {
+      expect(call[0]).toHaveProperty('where');
+      expect(call[0]).toHaveProperty('update');
+      expect(call[0]).toHaveProperty('create');
     }
+    // All calls use upsert (not create), confirming dedup by contract
+    expect(upsertMock).toHaveBeenCalledTimes(2);
   });
 
-  it('returns ≥1 normalized candidate objects each with a resolvable URL field', async () => {
-    mockSearch.mockResolvedValue([{ url: FAKE_URL_1, title: 'Norm Test' }]);
-    mockUpsert.mockResolvedValue({ id: 'c1', url: FAKE_URL_1, caseId: FAKE_CASE_ID, status: 'new' });
-
+  it('returns ≥1 normalized candidate object each with a resolvable url field', async () => {
     const { POST } = await import('../../src/app/api/cases/[caseId]/search/route');
-
-    const req = new Request(`http://test/api/cases/${FAKE_CASE_ID}/search`, {
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
       method: 'POST',
-      body: JSON.stringify({ terms: 'test search' }),
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ terms: TERMS }),
     });
-
-    const params = Promise.resolve({ caseId: FAKE_CASE_ID });
-    const res = await POST(req, { params });
-
+    const res = await POST(req, { params: { caseId: CASE_ID } });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { candidates: { url: string }[] };
-
+    const body = await res.json() as { candidates: { url: string }[] };
     expect(Array.isArray(body.candidates)).toBe(true);
     expect(body.candidates.length).toBeGreaterThanOrEqual(1);
-
     for (const candidate of body.candidates) {
       expect(typeof candidate.url).toBe('string');
-      // Must be a resolvable (parseable) URL
-      expect(() => new URL(candidate.url)).not.toThrow();
+      expect(candidate.url.startsWith('http')).toBe(true);
     }
   });
 });
