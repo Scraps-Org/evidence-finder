@@ -1,42 +1,48 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "834bf8b66a84423397ff789a846bf4ff915fbffa"
+      "6bfb0c76b3c58379f310440baff963e2edd56fae",
+      "4c9a4c6a361aafa126e94b9fbeb8f4f5c50f7e9d"
     ]
   },
-  "base_ref": "a5833b49086ba5524fc092d0772bc9de2ad452ab",
-  "code_integration_sha": "12d966762c30678cfffc6252172e2ae48da7e21c",
+  "base_ref": "adb6fdd5c76f8c5d9f6f170d8b351796c9cb5837",
+  "code_integration_sha": "430f38d7c02efdf5feb77bc1cac5e1207029a1c5",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-2bc3a53e4e30",
-  "dispatch_id": "eval-evidence-finder-2bc3a53e4e30",
+  "correlation_id": "eval-evidence-finder-5df61a4bda2a",
+  "dispatch_id": "eval-evidence-finder-5df61a4bda2a-a26",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-25T09:46:56.298923Z",
-  "goal_doc_sha": "2bc3a53e4e30",
-  "goal_id": "evidence-finder-2bc3a53e4e30",
-  "integration_branch": "scraps/goal/evidence-finder-2bc3a53e4e30",
+  "generated_at": "2026-06-25T15:32:45.543146Z",
+  "goal_doc_sha": "5df61a4bda2a",
+  "goal_id": "evidence-finder-5df61a4bda2a",
+  "integration_branch": "scraps/goal/evidence-finder-5df61a4bda2a",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "2b6833f5f8ea6284d5b7890350e381d4f5899d3e7cd4f03644f634e81c96512f"
+    "sha256": "f849d98a8c1b2f76b5e0339da6b81b79dbcfdcce7cb74abd5c0cdf681a12e075"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "evidence-list-content-shield",
+        "name": "export-csv-route",
+        "status": "green",
+        "tier": "extended"
+      },
+      {
+        "name": "export-csv-ui",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 1,
+    "merged_task_count": 2,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D4-content-shielded",
+      "criterion": "D5-export-csv",
       "how_measured": "deterministic_verification",
-      "observed": "verification_evidence (tasks: evidence-list-content-shield)"
+      "observed": "verification_evidence (tasks: export-csv-route, export-csv-ui)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -65,12 +71,12 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec prisma migrate deploy",
+          "command": "pnpm exec prisma migrate reset --force --skip-generate --skip-seed",
           "exit_code": 0,
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/acceptance/evidence-content-shield.test.tsx tests/acceptance/evidence-list.test.tsx",
+          "command": "pnpm exec vitest run tests/acceptance/export-csv-route.test.ts",
           "exit_code": 0,
           "status": "passed"
         },
@@ -85,8 +91,51 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:evidence-list-content-shield",
-      "name": "evidence-list-content-shield",
+      "log_ref": "event:task.verification_evidence:export-csv-route",
+      "name": "export-csv-route",
+      "status": "green",
+      "tier": "extended"
+    },
+    {
+      "checks": [
+        {
+          "command": "pnpm install --frozen-lockfile",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma generate",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma migrate reset --force --skip-generate --skip-seed",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/export-csv.test.tsx",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/evidence-list.test.tsx tests/acceptance/evidence-content-shield.test.tsx",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec tsc --noEmit",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm run typecheck",
+          "exit_code": 0,
+          "status": "passed"
+        }
+      ],
+      "log_ref": "event:task.verification_evidence:export-csv-ui",
+      "name": "export-csv-ui",
       "status": "green",
       "tier": "extended"
     }
