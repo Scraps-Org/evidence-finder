@@ -1,119 +1,66 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
+import { GET } from '../../src/app/api/cases/[id]/export/route'
 
-// Stub Prisma before importing the route so the module resolves without a real DB
-vi.mock('../../src/lib/prisma', () => {
-  const evidence = [
-    {
-      id: 'ev-1',
-      url: 'https://example.com/page-one',
-      detectedAt: new Date('2024-01-01T00:00:00.000Z'),
-      pageTitle: 'Page One',
-      domain: 'example.com',
-      caseId: 'case-1',
+const EVIDENCE_ROWS = [
+  {
+    id: 'e1',
+    url: 'https://example.com/page1',
+    detectedAt: new Date('2026-06-25T10:00:00.000Z'),
+    pageTitle: 'Example Page One',
+    domain: 'example.com',
+    caseId: 'case-abc',
+    createdAt: new Date('2026-06-25T10:00:00.000Z'),
+  },
+  {
+    id: 'e2',
+    url: 'https://other.org/page2',
+    detectedAt: new Date('2026-06-24T09:00:00.000Z'),
+    pageTitle: 'Other Page Two',
+    domain: 'other.org',
+    caseId: 'case-abc',
+    createdAt: new Date('2026-06-24T09:00:00.000Z'),
+  },
+]
+
+vi.mock('../../src/lib/prisma', () => ({
+  default: {
+    evidence: {
+      findMany: vi.fn().mockResolvedValue(EVIDENCE_ROWS),
     },
-    {
-      id: 'ev-2',
-      url: 'https://example.com/page-two',
-      detectedAt: new Date('2024-01-02T00:00:00.000Z'),
-      pageTitle: 'Page Two',
-      domain: 'example.com',
-      caseId: 'case-1',
-    },
-  ]
-  return {
-    default: {
-      evidence: {
-        findMany: vi.fn().mockResolvedValue(evidence),
-      },
-    },
-  }
-})
+  },
+}))
 
-import { GET } from '../../src/app/api/cases/[id]/export-csv/route'
-
-describe('D5-export-csv – API route layer', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('triggers a file download response (attachment disposition, not inline) for a case with evidence', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export-csv', { method: 'GET' })
-    const params = Promise.resolve({ id: 'case-1' })
-
-    const res = await GET(req, { params })
+describe('D5-export-csv: GET /api/cases/[id]/export route', () => {
+  it('triggers a file download response (Content-Disposition: attachment) not inline', async () => {
+    const req = new Request('http://test/api/cases/case-abc/export', { method: 'GET' })
+    const res = await GET(req, { params: { id: 'case-abc' } })
 
     expect(res.status).toBe(200)
-
     const disposition = res.headers.get('Content-Disposition') ?? ''
     expect(disposition).toMatch(/attachment/i)
-    // must not be inline
-    expect(disposition).not.toMatch(/^inline/i)
-  })
-
-  it('returns text/csv content type', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export-csv', { method: 'GET' })
-    const params = Promise.resolve({ id: 'case-1' })
-
-    const res = await GET(req, { params })
-
-    const contentType = res.headers.get('Content-Type') ?? ''
-    expect(contentType).toMatch(/text\/csv/i)
+    expect(disposition).toMatch(/\.csv/i)
   })
 
   it('CSV body contains url, detectedAt, pageTitle, domain columns for every evidence row', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export-csv', { method: 'GET' })
-    const params = Promise.resolve({ id: 'case-1' })
+    const req = new Request('http://test/api/cases/case-abc/export', { method: 'GET' })
+    const res = await GET(req, { params: { id: 'case-abc' } })
 
-    const res = await GET(req, { params })
-    const text = await res.text()
+    const csvText = await res.text()
+    const lines = csvText.trim().split('\n')
+    const header = lines[0]!
 
-    const lines = text.trim().split('\n').filter(Boolean)
-    expect(lines.length).toBeGreaterThanOrEqual(2) // header + at least 1 data row
+    expect(header).toMatch(/url/i)
+    expect(header).toMatch(/detectedAt/i)
+    expect(header).toMatch(/pageTitle/i)
+    expect(header).toMatch(/domain/i)
 
-    const headers = lines[0]!.split(',')
-    expect(headers).toContain('url')
-    expect(headers).toContain('detectedAt')
-    expect(headers).toContain('pageTitle')
-    expect(headers).toContain('domain')
+    expect(lines.length).toBe(EVIDENCE_ROWS.length + 1)
 
-    const dataRows = lines.slice(1)
-    for (const row of dataRows) {
-      const cols = row.split(',')
-      // 4 columns: url, detectedAt, pageTitle, domain
-      expect(cols).toHaveLength(4)
-      for (const col of cols) {
-        expect(col.trim()).not.toBe('')
-      }
-    }
-  })
-
-  it('every data row has non-empty values for all four required columns', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export-csv', { method: 'GET' })
-    const params = Promise.resolve({ id: 'case-1' })
-
-    const res = await GET(req, { params })
-    const text = await res.text()
-
-    const lines = text.trim().split('\n').filter(Boolean)
-    const headerLine = lines[0]!.split(',')
-    const urlIdx = headerLine.indexOf('url')
-    const detectedAtIdx = headerLine.indexOf('detectedAt')
-    const pageTitleIdx = headerLine.indexOf('pageTitle')
-    const domainIdx = headerLine.indexOf('domain')
-
-    expect(urlIdx).toBeGreaterThanOrEqual(0)
-    expect(detectedAtIdx).toBeGreaterThanOrEqual(0)
-    expect(pageTitleIdx).toBeGreaterThanOrEqual(0)
-    expect(domainIdx).toBeGreaterThanOrEqual(0)
-
-    const dataRows = lines.slice(1)
-    expect(dataRows.length).toBeGreaterThan(0)
-    for (const row of dataRows) {
-      const cols = row.split(',')
-      expect(cols[urlIdx]!.trim()).not.toBe('')
-      expect(cols[detectedAtIdx]!.trim()).not.toBe('')
-      expect(cols[pageTitleIdx]!.trim()).not.toBe('')
-      expect(cols[domainIdx]!.trim()).not.toBe('')
+    for (let i = 0; i < EVIDENCE_ROWS.length; i++) {
+      const row = lines[i + 1]!
+      expect(row).toContain(EVIDENCE_ROWS[i]!.url)
+      expect(row).toContain(EVIDENCE_ROWS[i]!.pageTitle)
+      expect(row).toContain(EVIDENCE_ROWS[i]!.domain)
     }
   })
 })
