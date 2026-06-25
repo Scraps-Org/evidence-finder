@@ -1,66 +1,102 @@
 import { describe, it, expect } from 'vitest';
 import { GET } from '../../src/app/api/cases/[id]/export/route';
 
-const EVIDENCE_ROWS = [
+const MOCK_EVIDENCE = [
   {
     id: 'ev-1',
-    url: 'https://example.com/page',
-    detectedAt: new Date('2026-06-01T10:00:00.000Z'),
-    pageTitle: 'Example Page',
+    url: 'https://example.com/page1',
+    detectedAt: new Date('2026-06-25T10:00:00.000Z'),
+    pageTitle: 'Example Page 1',
     domain: 'example.com',
+    caseId: 'case-abc',
+    createdAt: new Date('2026-06-25T10:00:00.000Z'),
   },
   {
     id: 'ev-2',
-    url: 'https://other.org/article',
-    detectedAt: new Date('2026-06-02T12:00:00.000Z'),
-    pageTitle: 'Other Article',
-    domain: 'other.org',
+    url: 'https://example.com/page2',
+    detectedAt: new Date('2026-06-25T11:00:00.000Z'),
+    pageTitle: 'Example Page 2',
+    domain: 'example.com',
+    caseId: 'case-abc',
+    createdAt: new Date('2026-06-25T11:00:00.000Z'),
   },
 ];
 
+// Mock Prisma so the route test does not need a real DB connection
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     evidence: {
-      findMany: vi.fn().mockResolvedValue(EVIDENCE_ROWS),
+      findMany: vi.fn(() => Promise.resolve(MOCK_EVIDENCE)),
     },
   },
 }));
 
-describe('D5-export-csv — route: GET /api/cases/[id]/export returns CSV with required columns', () => {
-  it('returns Content-Disposition attachment (file download, not inline)', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export', { method: 'GET' });
-    const res = await GET(req, { params: { id: 'case-1' } });
+import { vi } from 'vitest';
 
-    const disposition = res.headers.get('Content-Disposition') ?? '';
-    expect(disposition).toMatch(/attachment/i);
-    expect(disposition).not.toMatch(/inline/i);
+describe('D5-export-csv — API route layer', () => {
+  it('returns 200 with content-type text/csv', async () => {
+    const req = new Request('http://localhost/api/cases/case-abc/export', {
+      method: 'GET',
+    });
+    const res = await GET(req, { params: { id: 'case-abc' } });
+    expect(res.status).toBe(200);
+    const ct = res.headers.get('content-type') ?? '';
+    expect(ct.toLowerCase()).toContain('text/csv');
   });
 
-  it('CSV body contains all four required columns for every evidence row', async () => {
-    const req = new Request('http://localhost/api/cases/case-1/export', { method: 'GET' });
-    const res = await GET(req, { params: { id: 'case-1' } });
+  it('sets content-disposition to attachment so the browser downloads the file', async () => {
+    const req = new Request('http://localhost/api/cases/case-abc/export', {
+      method: 'GET',
+    });
+    const res = await GET(req, { params: { id: 'case-abc' } });
+    const cd = res.headers.get('content-disposition') ?? '';
+    // Must be attachment (download), not inline (render) or a redirect
+    expect(cd.toLowerCase()).toContain('attachment');
+    expect(cd.toLowerCase()).toContain('.csv');
+  });
 
+  it('CSV body contains header row with url, detectedAt, pageTitle, domain columns', async () => {
+    const req = new Request('http://localhost/api/cases/case-abc/export', {
+      method: 'GET',
+    });
+    const res = await GET(req, { params: { id: 'case-abc' } });
     const text = await res.text();
     const lines = text.trim().split('\n');
-
-    // Header row must declare all four columns
     const header = lines[0]!.toLowerCase();
     expect(header).toContain('url');
     expect(header).toContain('detectedat');
     expect(header).toContain('pagetitle');
     expect(header).toContain('domain');
+  });
 
-    // Every data row must contain non-empty values for each evidence entry
-    expect(lines.length).toBeGreaterThanOrEqual(EVIDENCE_ROWS.length + 1);
+  it('CSV body contains one data row per evidence item with all four field values', async () => {
+    const req = new Request('http://localhost/api/cases/case-abc/export', {
+      method: 'GET',
+    });
+    const res = await GET(req, { params: { id: 'case-abc' } });
+    const text = await res.text();
+    const lines = text.trim().split('\n');
 
-    const dataLines = lines.slice(1);
-    for (const line of dataLines) {
-      const cols = line.split(',');
-      // At minimum 4 columns present and non-empty after trimming quotes
-      expect(cols.length).toBeGreaterThanOrEqual(4);
-      for (const col of cols) {
-        expect(col.replace(/"/g, '').trim()).not.toBe('');
-      }
+    // header + 2 data rows
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+
+    const headers = lines[0]!.split(',').map((h) => h.trim().toLowerCase());
+    const urlIdx = headers.indexOf('url');
+    const detectedAtIdx = headers.findIndex((h) => h.includes('detectedat'));
+    const pageTitleIdx = headers.findIndex((h) => h.includes('pagetitle'));
+    const domainIdx = headers.indexOf('domain');
+
+    expect(urlIdx).toBeGreaterThanOrEqual(0);
+    expect(detectedAtIdx).toBeGreaterThanOrEqual(0);
+    expect(pageTitleIdx).toBeGreaterThanOrEqual(0);
+    expect(domainIdx).toBeGreaterThanOrEqual(0);
+
+    for (const line of lines.slice(1)) {
+      const cells = line.split(',');
+      expect(cells[urlIdx]!.trim()).toBeTruthy();
+      expect(cells[detectedAtIdx]!.trim()).toBeTruthy();
+      expect(cells[pageTitleIdx]!.trim()).toBeTruthy();
+      expect(cells[domainIdx]!.trim()).toBeTruthy();
     }
   });
 });
