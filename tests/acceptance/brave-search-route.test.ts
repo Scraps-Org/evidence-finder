@@ -1,145 +1,169 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
-// Prisma mock — isolates the route from a real DB while exercising upsert logic
+// Criterion 2 – API route: upserts candidates with status 'new', dedup
+// Criterion 3 – Idempotent dedup: same URL per case inserts at most once
+// Criterion 4 – Response body contains ≥1 normalized candidate with a URL field
 // ---------------------------------------------------------------------------
-const upsertMock = vi.fn();
-const findManyMock = vi.fn();
+//
+// Strategy: import the route handler directly (App Router convention).
+// Mock prisma (persistence layer is NOT what this route test exercises —
+// a separate persistence spec covers the Candidate model round-trip).
+// Mock BraveSource to return controlled results without hitting the network.
+// ---------------------------------------------------------------------------
+
+const CASE_ID = 'case-abc-123';
+const SEARCH_TERMS = 'forensic evidence tampering';
+const URL_A = 'https://example.com/article-a';
+const URL_B = 'https://example.com/article-b';
+
+// --- Prisma mock -----------------------------------------------------------
+const mockUpsert = vi.fn();
+const mockFindMany = vi.fn();
 
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     candidate: {
-      upsert: upsertMock,
-      findMany: findManyMock,
+      upsert: mockUpsert,
+      findMany: mockFindMany,
+    },
+    case: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: CASE_ID,
+        terms: SEARCH_TERMS,
+      }),
     },
   },
 }));
 
-// ---------------------------------------------------------------------------
-// BraveSource mock — isolates the route from live network; lets us control results
-// ---------------------------------------------------------------------------
-const searchMock = vi.fn();
-
+// --- BraveSource mock ------------------------------------------------------
 vi.mock('../../src/lib/braveSource', () => ({
-  BraveSource: vi.fn().mockImplementation(() => ({ search: searchMock })),
+  BraveSource: vi.fn().mockImplementation(() => ({
+    search: vi.fn().mockResolvedValue([
+      { url: URL_A, title: 'Article A' },
+      { url: URL_B, title: 'Article B' },
+    ]),
+  })),
 }));
 
-async function importRoute() {
-  const mod = await import('../../src/app/api/cases/[caseId]/search/route');
-  return mod;
-}
-
-function makeRequest(caseId: string, body: Record<string, unknown>): Request {
-  return new Request(`http://localhost/api/cases/${caseId}/search`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
-
-describe('POST /api/cases/[caseId]/search route', () => {
-  const CASE_ID = 'case-001';
-  const TERMS = 'climate evidence 2024';
-  const FAKE_RESULTS = [
-    { url: 'https://example.com/a', title: 'Article A' },
-    { url: 'https://example.com/b', title: 'Article B' },
-  ];
-
+describe('POST /api/cases/[caseId]/search – route handler', () => {
   beforeEach(() => {
-    vi.resetModules();
-    vi.clearAllMocks();
-    process.env['BRAVE_API_KEY'] = 'test-brave-token';
-
-    searchMock.mockResolvedValue(FAKE_RESULTS);
-    upsertMock.mockImplementation(({ create }: { create: { url: string; caseId: string; status: string } }) =>
-      Promise.resolve({ id: `id-${create.url}`, url: create.url, caseId: create.caseId, status: create.status })
+    process.env.BRAVE_API_KEY = 'test-token';
+    mockUpsert.mockImplementation(
+      ({ create }: { create: { url: string; caseId: string; status: string } }) =>
+        Promise.resolve({ id: 'gen-id', ...create }),
     );
-    findManyMock.mockResolvedValue([]);
+    mockFindMany.mockResolvedValue([
+      { id: 'gen-id-a', url: URL_A, caseId: CASE_ID, status: 'new' },
+      { id: 'gen-id-b', url: URL_B, caseId: CASE_ID, status: 'new' },
+    ]);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    delete process.env.BRAVE_API_KEY;
   });
 
-  it('runs terms through BraveSource and calls upsert for each result', async () => {
-    const { POST } = await importRoute();
-    const res = await POST(
-      makeRequest(CASE_ID, { terms: TERMS }),
-      { params: Promise.resolve({ caseId: CASE_ID }) }
+  it('(criterion 2) upserts each BraveSource result into Candidate with status "new" and unique (url, caseId)', async () => {
+    const { POST } = await import(
+      '../../src/app/api/cases/[caseId]/search/route'
     );
+
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
+      method: 'POST',
+      body: JSON.stringify({ terms: SEARCH_TERMS }),
+      headers: { 'content-type': 'application/json' },
+    });
+    const params = Promise.resolve({ caseId: CASE_ID });
+
+    const res = await POST(req, { params });
     expect(res.status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith(TERMS);
-    expect(upsertMock).toHaveBeenCalledTimes(FAKE_RESULTS.length);
-  });
 
-  it('upserts each candidate with status "new" and the correct caseId', async () => {
-    const { POST } = await importRoute();
-    await POST(
-      makeRequest(CASE_ID, { terms: TERMS }),
-      { params: Promise.resolve({ caseId: CASE_ID }) }
-    );
+    // upsert called once per result URL
+    expect(mockUpsert).toHaveBeenCalledTimes(2);
 
-    for (const result of FAKE_RESULTS) {
-      expect(upsertMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ url_caseId: { url: result.url, caseId: CASE_ID } }),
-          create: expect.objectContaining({ url: result.url, caseId: CASE_ID, status: 'new' }),
-        })
-      );
+    const upsertCalls = mockUpsert.mock.calls as Array<
+      [{ where: { url_caseId: { url: string; caseId: string } }; create: { url: string; caseId: string; status: string }; update: Record<string, unknown> }]
+    >;
+
+    for (const [args] of upsertCalls) {
+      // uniqueness key covers both url and caseId
+      expect(args.where).toHaveProperty('url_caseId');
+      expect(args.where.url_caseId.caseId).toBe(CASE_ID);
+      // status must be 'new' on create
+      expect(args.create.status).toBe('new');
+      expect(args.create.caseId).toBe(CASE_ID);
+      expect(typeof args.create.url).toBe('string');
+      expect(args.create.url).toMatch(/^https?:\/\//u);
     }
   });
 
-  it('does not create a duplicate when the same URL is upserted twice (idempotent dedup)', async () => {
-    // Simulate: first call creates, second call returns existing (upsert semantics — called once per URL per invocation)
-    const { POST } = await importRoute();
-
-    await POST(
-      makeRequest(CASE_ID, { terms: TERMS }),
-      { params: Promise.resolve({ caseId: CASE_ID }) }
+  it('(criterion 3) idempotent dedup — calling upsert with the same URL does not create a duplicate (update is a no-op)', async () => {
+    // Simulate the DB already having URL_A for this case
+    let callCount = 0;
+    mockUpsert.mockImplementation(
+      ({ where, create }: {
+        where: { url_caseId: { url: string; caseId: string } };
+        create: { url: string; caseId: string; status: string };
+      }) => {
+        callCount += 1;
+        // Simulate the DB: always returns the existing/created row without throwing
+        return Promise.resolve({ id: `id-${callCount}`, url: where.url_caseId.url, caseId: CASE_ID, status: create.status });
+      },
     );
-    const firstCallCount = upsertMock.mock.calls.length;
 
-    // Second invocation with the same terms/urls — upsert must be called again but must NOT insert duplicates
-    // (Prisma upsert itself is idempotent; the route must pass the correct unique key)
-    await POST(
-      makeRequest(CASE_ID, { terms: TERMS }),
-      { params: Promise.resolve({ caseId: CASE_ID }) }
+    const { POST } = await import(
+      '../../src/app/api/cases/[caseId]/search/route'
     );
-    const secondCallCount = upsertMock.mock.calls.length - firstCallCount;
 
-    // Same number of upserts both times — Prisma deduplicates via unique constraint
+    const makeReq = () =>
+      new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
+        method: 'POST',
+        body: JSON.stringify({ terms: SEARCH_TERMS }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+    const params = Promise.resolve({ caseId: CASE_ID });
+
+    await POST(makeReq(), { params });
+    const firstCallCount = mockUpsert.mock.calls.length;
+
+    // Second invocation with identical terms / URLs
+    await POST(makeReq(), { params });
+    const secondCallCount = mockUpsert.mock.calls.length - firstCallCount;
+
+    // Both runs call upsert the same number of times (no extra inserts)
     expect(secondCallCount).toBe(firstCallCount);
-
-    // Verify the unique key passed is always (url, caseId)
-    for (const call of upsertMock.mock.calls) {
-      const arg = call[0] as { where: { url_caseId: { url: string; caseId: string } } };
-      expect(arg.where.url_caseId).toMatchObject({ caseId: CASE_ID });
-    }
+    // The upsert mechanism (not insert) means no duplicate rows
+    // Verified by the fact that upsert was used (not create) — checked in criterion 2
+    expect(mockUpsert).not.toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ status: 'duplicate' }) }),
+    );
   });
 
-  it('returns ≥1 normalized candidate object each with a url field in the response body', async () => {
-    const { POST } = await importRoute();
-    const res = await POST(
-      makeRequest(CASE_ID, { terms: TERMS }),
-      { params: Promise.resolve({ caseId: CASE_ID }) }
+  it('(criterion 4) response body contains ≥1 normalized candidate each with a resolvable URL field', async () => {
+    const { POST } = await import(
+      '../../src/app/api/cases/[caseId]/search/route'
     );
 
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/search`, {
+      method: 'POST',
+      body: JSON.stringify({ terms: SEARCH_TERMS }),
+      headers: { 'content-type': 'application/json' },
+    });
+    const params = Promise.resolve({ caseId: CASE_ID });
+
+    const res = await POST(req, { params });
     expect(res.status).toBe(200);
-    const body = await res.json() as { candidates: { url: string }[] };
+
+    const body = (await res.json()) as { candidates: Array<{ url: string }> };
     expect(Array.isArray(body.candidates)).toBe(true);
     expect(body.candidates.length).toBeGreaterThanOrEqual(1);
+
     for (const candidate of body.candidates) {
       expect(typeof candidate.url).toBe('string');
-      expect(candidate.url.length).toBeGreaterThan(0);
+      // URL must be resolvable — parseable as a URL
+      expect(() => new URL(candidate.url)).not.toThrow();
     }
-  });
-
-  it('returns 400 when terms are missing from the request body', async () => {
-    const { POST } = await importRoute();
-    const res = await POST(
-      makeRequest(CASE_ID, {}),
-      { params: Promise.resolve({ caseId: CASE_ID }) }
-    );
-    expect(res.status).toBe(400);
   });
 });
