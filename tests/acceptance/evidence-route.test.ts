@@ -1,108 +1,112 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-describe('POST /api/evidence - manual URL evidence creation', () => {
-  const FAKE_TITLE = 'Example Domain Title';
-  const FAKE_URL = 'https://example.com/article';
-  const FAKE_CASE_ID = 'case-abc-123';
+// ---------------------------------------------------------------------------
+// Helpers / stubs
+// ---------------------------------------------------------------------------
 
-  let createdEvidence: {
-    url: string;
-    pageTitle: string;
-    domain: string;
-    detectedAt: Date;
-    caseId: string;
-  } | null = null;
+const mockCreate = vi.fn();
+const mockPrismaEvidence = { create: mockCreate };
 
+vi.mock('../../src/lib/prisma', () => ({
+  default: { evidence: mockPrismaEvidence },
+}));
+
+// ---------------------------------------------------------------------------
+// fetch stub — simulates a remote page with a <title> tag
+// ---------------------------------------------------------------------------
+
+const FAKE_HTML = '<html><head><title>Example Domain</title></head><body></body></html>';
+
+const makeFetchStub = (html: string = FAKE_HTML) =>
+  vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+    new Response(html, { status: 200, headers: { 'content-type': 'text/html' } }),
+  );
+
+describe('POST /api/evidence — server route handler', () => {
   beforeEach(() => {
-    createdEvidence = null;
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-        new Response(
-          `<html><head><title>${FAKE_TITLE}</title></head><body>content</body></html>`,
-          { status: 200, headers: { 'content-type': 'text/html' } }
-        )
-      )
-    );
-
-    vi.mock('../../src/lib/prisma', () => ({
-      default: {
-        evidence: {
-          create: vi.fn(async (args: { data: { url: string; pageTitle: string; domain: string; detectedAt: Date; caseId: string } }) => {
-            createdEvidence = args.data;
-            return { id: 'ev-1', ...args.data };
-          }),
-        },
-      },
-    }));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-25T12:00:00.000Z'));
+    mockCreate.mockReset();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
-    vi.resetAllMocks();
   });
 
-  it('fetches the target page server-side', async () => {
-    const { POST } = await import('../../src/app/api/evidence/route');
-    const req = new Request('http://localhost/api/evidence', {
-      method: 'POST',
-      body: JSON.stringify({ url: FAKE_URL, caseId: FAKE_CASE_ID }),
-      headers: { 'content-type': 'application/json' },
-    });
-    await POST(req);
-    const fetchMock = vi.mocked(globalThis.fetch as ReturnType<typeof vi.fn>);
-    expect(fetchMock).toHaveBeenCalledWith(FAKE_URL);
-  });
+  it('fetches the target page, extracts title + domain, stamps detectedAt, and persists via Prisma', async () => {
+    const fetchStub = makeFetchStub();
+    vi.stubGlobal('fetch', fetchStub);
 
-  it('parses the <title> tag into pageTitle', async () => {
-    const { POST } = await import('../../src/app/api/evidence/route');
-    const req = new Request('http://localhost/api/evidence', {
-      method: 'POST',
-      body: JSON.stringify({ url: FAKE_URL, caseId: FAKE_CASE_ID }),
-      headers: { 'content-type': 'application/json' },
+    mockCreate.mockResolvedValue({
+      id: 'ev-1',
+      url: 'https://example.com/article',
+      pageTitle: 'Example Domain',
+      domain: 'example.com',
+      detectedAt: new Date('2026-06-25T12:00:00.000Z'),
+      caseId: 'case-abc',
     });
-    await POST(req);
-    expect(createdEvidence?.pageTitle).toBe(FAKE_TITLE);
-  });
 
-  it('derives domain from the URL hostname', async () => {
     const { POST } = await import('../../src/app/api/evidence/route');
-    const req = new Request('http://localhost/api/evidence', {
-      method: 'POST',
-      body: JSON.stringify({ url: FAKE_URL, caseId: FAKE_CASE_ID }),
-      headers: { 'content-type': 'application/json' },
-    });
-    await POST(req);
-    expect(createdEvidence?.domain).toBe('example.com');
-  });
 
-  it('stamps detectedAt with a server-side timestamp close to now', async () => {
-    const before = new Date();
-    const { POST } = await import('../../src/app/api/evidence/route');
     const req = new Request('http://localhost/api/evidence', {
       method: 'POST',
-      body: JSON.stringify({ url: FAKE_URL, caseId: FAKE_CASE_ID }),
+      body: JSON.stringify({ url: 'https://example.com/article', caseId: 'case-abc' }),
       headers: { 'content-type': 'application/json' },
     });
-    await POST(req);
-    const after = new Date();
-    const ts = createdEvidence?.detectedAt;
-    expect(ts).toBeInstanceOf(Date);
-    expect((ts as Date).getTime()).toBeGreaterThanOrEqual(before.getTime());
-    expect((ts as Date).getTime()).toBeLessThanOrEqual(after.getTime());
-  });
 
-  it('persists a new Evidence row with the correct caseId', async () => {
-    const { POST } = await import('../../src/app/api/evidence/route');
-    const req = new Request('http://localhost/api/evidence', {
-      method: 'POST',
-      body: JSON.stringify({ url: FAKE_URL, caseId: FAKE_CASE_ID }),
-      headers: { 'content-type': 'application/json' },
-    });
     const res = await POST(req);
-    expect(createdEvidence?.caseId).toBe(FAKE_CASE_ID);
-    expect(createdEvidence?.url).toBe(FAKE_URL);
     expect(res.status).toBe(201);
+
+    // (a) fetched the target URL server-side
+    expect(fetchStub).toHaveBeenCalledWith('https://example.com/article');
+
+    // (b) pageTitle parsed from <title>
+    // (c) domain derived from hostname
+    // (d) detectedAt stamped with server-side timestamp
+    // (e) Evidence row persisted via Prisma
+    expect(mockCreate).toHaveBeenCalledOnce();
+    const createArg = mockCreate.mock.calls[0]![0] as {
+      data: { url: string; pageTitle: string; domain: string; detectedAt: Date; caseId: string };
+    };
+    expect(createArg.data.url).toBe('https://example.com/article');
+    expect(createArg.data.pageTitle).toBe('Example Domain');
+    expect(createArg.data.domain).toBe('example.com');
+    expect(createArg.data.detectedAt).toEqual(new Date('2026-06-25T12:00:00.000Z'));
+    expect(createArg.data.caseId).toBe('case-abc');
+
+    const body = await res.json() as { pageTitle?: string; domain?: string };
+    expect(body.pageTitle).toBe('Example Domain');
+    expect(body.domain).toBe('example.com');
+  });
+
+  it('handles a page with no <title> tag gracefully (pageTitle falls back to empty string or null)', async () => {
+    const fetchStub = makeFetchStub('<html><head></head><body>no title here</body></html>');
+    vi.stubGlobal('fetch', fetchStub);
+
+    mockCreate.mockResolvedValue({
+      id: 'ev-2',
+      url: 'https://notitle.io/',
+      pageTitle: '',
+      domain: 'notitle.io',
+      detectedAt: new Date('2026-06-25T12:00:00.000Z'),
+      caseId: 'case-xyz',
+    });
+
+    const { POST } = await import('../../src/app/api/evidence/route');
+
+    const req = new Request('http://localhost/api/evidence', {
+      method: 'POST',
+      body: JSON.stringify({ url: 'https://notitle.io/', caseId: 'case-xyz' }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    expect(mockCreate).toHaveBeenCalledOnce();
+    const createArg = mockCreate.mock.calls[0]![0] as {
+      data: { domain: string };
+    };
+    expect(createArg.data.domain).toBe('notitle.io');
   });
 });
