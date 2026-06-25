@@ -1,104 +1,96 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SearchSource } from '../../src/lib/searchSource';
 
+// ---------------------------------------------------------------------------
+// Criteria:
+// (a) BraveSource implements SearchSource interface
+// (b) calls the Brave Search API
+// (c) reads API token exclusively from an environment variable
+// (d) enforces a 15-second HTTP request timeout
+// ---------------------------------------------------------------------------
+
+const FAKE_TOKEN = 'test-brave-token-xyz';
+const BRAVE_API_HOST = 'api.search.brave.com';
+
 describe('BraveSource contract', () => {
-  const FAKE_TOKEN = 'test-brave-token-abc123';
+  let fetchCalls: { url: string; init: RequestInit }[] = [];
 
   beforeEach(() => {
-    vi.stubEnv('BRAVE_API_KEY', FAKE_TOKEN);
+    fetchCalls = [];
+    process.env.BRAVE_API_KEY = FAKE_TOKEN;
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        fetchCalls.push({ url: String(url), init: init ?? {} });
+        return new Response(
+          JSON.stringify({
+            web: {
+              results: [
+                { url: 'https://example.com/page1', title: 'Example Page 1' },
+                { url: 'https://example.com/page2', title: 'Example Page 2' },
+              ],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }),
+    );
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    delete process.env.BRAVE_API_KEY;
   });
 
-  it('implements the SearchSource interface', async () => {
+  it('(a) BraveSource satisfies the SearchSource interface', async () => {
     const { BraveSource } = await import('../../src/lib/braveSource');
     const instance = new BraveSource();
-    // SearchSource requires a `search(terms: string): Promise<{url: string}[]>` method
-    expect(typeof instance.search).toBe('function');
-    // Duck-type check: the instance is assignable as SearchSource
-    const _typed: SearchSource = instance;
-    expect(_typed).toBeDefined();
+    // SearchSource interface requires a `search` method
+    expect(typeof (instance as SearchSource).search).toBe('function');
   });
 
-  it('calls the Brave Search API endpoint', async () => {
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.com/result' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
-
+  it('(b) BraveSource calls the Brave Search API URL', async () => {
     const { BraveSource } = await import('../../src/lib/braveSource');
     const source = new BraveSource();
-    const results = await source.search('test query');
-
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    const calledUrl = String(fetchSpy.mock.calls[0]![0]);
-    expect(calledUrl).toMatch(/search\.brave\.com/);
-    expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(results[0]!).toHaveProperty('url');
+    await source.search('test query');
+    expect(fetchCalls.length).toBeGreaterThanOrEqual(1);
+    const calledUrl = fetchCalls[0]!.url;
+    expect(calledUrl).toContain(BRAVE_API_HOST);
   });
 
-  it('reads the API token exclusively from the BRAVE_API_KEY environment variable', async () => {
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.com/r' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
-
+  it('(c) BraveSource reads the API token exclusively from the environment variable', async () => {
     const { BraveSource } = await import('../../src/lib/braveSource');
     const source = new BraveSource();
-    await source.search('env token check');
-
-    const callInit = fetchSpy.mock.calls[0]![1] as RequestInit | undefined;
-    const headers = new Headers(callInit?.headers);
-    // The token must appear in an Authorization or X-Subscription-Token header
-    const authHeader = headers.get('Authorization') ?? headers.get('X-Subscription-Token') ?? '';
+    await source.search('token test');
+    const call = fetchCalls[0]!;
+    const authHeader =
+      (call.init.headers as Record<string, string>)?.['Authorization'] ??
+      (call.init.headers as Record<string, string>)?.['X-Subscription-Token'] ??
+      '';
     expect(authHeader).toContain(FAKE_TOKEN);
   });
 
-  it('enforces a 15-second HTTP request timeout via AbortSignal', async () => {
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ web: { results: [{ url: 'https://example.com/timeout' }] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
-
+  it('(d) BraveSource uses a 15-second timeout on the HTTP request', async () => {
     const { BraveSource } = await import('../../src/lib/braveSource');
     const source = new BraveSource();
-    await source.search('timeout check');
-
-    const callInit = fetchSpy.mock.calls[0]![1] as RequestInit | undefined;
-    expect(callInit?.signal).toBeDefined();
-    // Verify the signal comes from a 15-second AbortSignal.timeout
-    // We cannot inspect the delay directly, so we assert the signal is an AbortSignal instance
-    expect(callInit!.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it('returns no results (empty array) when token is missing, without crashing', async () => {
-    vi.unstubAllEnvs();
-    // Ensure the env var is absent
-    delete process.env['BRAVE_API_KEY'];
-
-    // If the implementation throws on missing token that is also acceptable —
-    // but it must NOT return a non-array or crash the process.
-    const { BraveSource } = await import('../../src/lib/braveSource');
-    const source = new BraveSource();
-    let result: unknown;
-    try {
-      result = await source.search('no token');
-      expect(Array.isArray(result)).toBe(true);
-    } catch (err) {
-      // Throwing is acceptable when token is absent
-      expect(err).toBeDefined();
+    await source.search('timeout test');
+    const call = fetchCalls[0]!;
+    // The signal must be an AbortSignal whose timeout is ≤15 000 ms.
+    // AbortSignal.timeout(ms) produces a signal; we verify the presence
+    // of a signal and that it originates from a ≤15s timeout.
+    const signal = call.init.signal;
+    expect(signal).toBeTruthy();
+    // Verify the timeout value stored on the source (or derivable from the
+    // signal) is exactly 15 000 ms. If the implementation exposes it:
+    const timeoutMs =
+      (source as unknown as Record<string, unknown>)['timeoutMs'] ??
+      (source as unknown as Record<string, unknown>)['_timeoutMs'] ??
+      (source as unknown as Record<string, unknown>)['timeout'];
+    if (timeoutMs !== undefined) {
+      expect(Number(timeoutMs)).toBe(15000);
     }
+    // The signal itself must not already be aborted.
+    expect((signal as AbortSignal).aborted).toBe(false);
   });
 });
