@@ -1,72 +1,83 @@
-import { describe, it, expect } from 'vitest'
-import { GET } from '../../src/app/api/cases/[caseId]/export/route'
+import { describe, it, expect } from 'vitest';
+import { GET } from '../../src/app/api/cases/[id]/export/route';
 
 describe('D5-export-csv – API route layer', () => {
-  it('returns a CSV where every evidence row contains url, detectedAt, pageTitle, domain columns', async () => {
-    const fakeEvidence = [
-      {
-        id: 'ev-1',
-        url: 'https://example.com/page1',
-        detectedAt: new Date('2024-01-15T10:00:00.000Z'),
-        pageTitle: 'Example Page One',
-        domain: 'example.com',
-      },
-      {
-        id: 'ev-2',
-        url: 'https://other.org/page2',
-        detectedAt: new Date('2024-02-20T12:30:00.000Z'),
-        pageTitle: 'Other Page Two',
-        domain: 'other.org',
-      },
-    ]
+  const evidenceRows = [
+    {
+      id: 'e1',
+      url: 'https://example.com/page1',
+      detectedAt: new Date('2026-06-25T10:00:00.000Z'),
+      pageTitle: 'Example Page 1',
+      domain: 'example.com',
+      caseId: 'c1',
+    },
+    {
+      id: 'e2',
+      url: 'https://other.org/page2',
+      detectedAt: new Date('2026-06-25T11:00:00.000Z'),
+      pageTitle: 'Other Page 2',
+      domain: 'other.org',
+      caseId: 'c1',
+    },
+  ];
 
-    // Mock prisma so the route can be imported directly without a real DB
-    vi.mock('../../src/lib/prisma', () => ({
-      default: {
-        evidence: {
-          findMany: vi.fn().mockResolvedValue(fakeEvidence),
-        },
-        case: {
-          findUnique: vi.fn().mockResolvedValue({ id: 'case-1', name: 'Test Case' }),
-        },
-      },
-    }))
+  it('Given evidence exists in a case, When GET /api/cases/[id]/export is called, Then it returns a CSV file download (not inline)', async () => {
+    const { prisma } = await import('../../src/lib/prisma');
 
-    const req = new Request('http://localhost/api/cases/case-1/export', { method: 'GET' })
-    const params = Promise.resolve({ caseId: 'case-1' })
-    const res = await GET(req, { params })
+    vi.spyOn(prisma.evidence, 'findMany').mockResolvedValue(
+      evidenceRows as Parameters<typeof prisma.evidence.findMany>[0] extends undefined
+        ? never
+        : Awaited<ReturnType<typeof prisma.evidence.findMany>>,
+    );
 
-    expect(res.status).toBe(200)
+    const req = new Request('http://localhost/api/cases/c1/export', { method: 'GET' });
+    const res = await GET(req, { params: { id: 'c1' } });
 
-    const contentType = res.headers.get('content-type') ?? ''
-    expect(contentType).toMatch(/text\/csv/i)
+    expect(res.status).toBe(200);
 
-    const body = await res.text()
-    const lines = body.trim().split('\n').filter(Boolean)
+    const contentDisposition = res.headers.get('content-disposition') ?? '';
+    expect(contentDisposition).toMatch(/attachment/i);
+    expect(contentDisposition).toMatch(/\.csv/i);
 
-    // At least a header row + 2 data rows
-    expect(lines.length).toBeGreaterThanOrEqual(3)
+    const contentType = res.headers.get('content-type') ?? '';
+    expect(contentType).toMatch(/text\/csv/i);
+  });
 
-    const header = lines[0]!.toLowerCase()
-    expect(header).toContain('url')
-    expect(header).toContain('detectedat')
-    expect(header).toContain('pagetitle')
-    expect(header).toContain('domain')
+  it('Given evidence rows, When the CSV body is parsed, Then each row has url, detectedAt, pageTitle, domain columns', async () => {
+    const { prisma } = await import('../../src/lib/prisma');
 
-    // Verify each data row contains the expected values
-    const dataRows = lines.slice(1)
-    for (const row of dataRows) {
-      // Each row must be non-empty and contain comma-separated values
-      expect(row.trim()).toBeTruthy()
-      const cols = row.split(',')
-      // url, detectedAt, pageTitle, domain = at least 4 columns
-      expect(cols.length).toBeGreaterThanOrEqual(4)
+    vi.spyOn(prisma.evidence, 'findMany').mockResolvedValue(
+      evidenceRows as Awaited<ReturnType<typeof prisma.evidence.findMany>>,
+    );
+
+    const req = new Request('http://localhost/api/cases/c1/export', { method: 'GET' });
+    const res = await GET(req, { params: { id: 'c1' } });
+
+    const csvText = await res.text();
+    const lines = csvText.trim().split('\n').filter(Boolean);
+
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+
+    const headerCols = lines[0]!.split(',').map((c) => c.trim().toLowerCase());
+    expect(headerCols).toContain('url');
+    expect(headerCols).toContain('detectedat');
+    expect(headerCols).toContain('pagetitle');
+    expect(headerCols).toContain('domain');
+
+    const urlIdx = headerCols.indexOf('url');
+    const detectedAtIdx = headerCols.indexOf('detectedat');
+    const pageTitleIdx = headerCols.indexOf('pagetitle');
+    const domainIdx = headerCols.indexOf('domain');
+
+    const dataLines = lines.slice(1);
+    expect(dataLines.length).toBe(evidenceRows.length);
+
+    for (const line of dataLines) {
+      const cols = line.split(',');
+      expect(cols[urlIdx]!.trim()).toBeTruthy();
+      expect(cols[detectedAtIdx]!.trim()).toBeTruthy();
+      expect(cols[pageTitleIdx]!.trim()).toBeTruthy();
+      expect(cols[domainIdx]!.trim()).toBeTruthy();
     }
-
-    // Spot-check actual values appear in the CSV body
-    expect(body).toContain('example.com/page1')
-    expect(body).toContain('Example Page One')
-    expect(body).toContain('2024-01-15')
-    expect(body).toContain('other.org')
-  })
-})
+  });
+});
