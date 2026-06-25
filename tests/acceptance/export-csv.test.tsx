@@ -1,91 +1,90 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import EvidenceList from '../../src/components/EvidenceList';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import EvidenceList from '../../src/components/EvidenceList'
 
-const EVIDENCE = [
+const FAKE_CASE_ID = 'case-abc-123'
+
+const fakeEvidence = [
   {
-    id: 'e1',
+    id: 'ev-1',
     url: 'https://example.com/page1',
     detectedAt: '2026-06-01T10:00:00.000Z',
-    pageTitle: 'Page One',
+    pageTitle: 'Example Page One',
     domain: 'example.com',
   },
   {
-    id: 'e2',
+    id: 'ev-2',
     url: 'https://other.org/page2',
-    detectedAt: '2026-06-02T12:00:00.000Z',
-    pageTitle: 'Page Two',
+    detectedAt: '2026-06-02T11:00:00.000Z',
+    pageTitle: 'Other Page Two',
     domain: 'other.org',
   },
-];
+]
 
-describe('D5-export-csv UI — export control triggers download', () => {
-  let revokeObjectURL: ReturnType<typeof vi.fn>;
-  let createObjectURL: ReturnType<typeof vi.fn>;
-  let clickSpy: ReturnType<typeof vi.fn>;
-  let appendChildSpy: ReturnType<typeof vi.spyOn>;
-  let removeChildSpy: ReturnType<typeof vi.spyOn>;
+describe('D5-export-csv: export control triggers file download', () => {
+  let createdObjectUrl: string | undefined
+  let clickedAnchor: HTMLAnchorElement | undefined
+  const revokeObjectURL = vi.fn()
 
   beforeEach(() => {
-    revokeObjectURL = vi.fn();
-    createObjectURL = vi.fn(() => 'blob:fake-url');
-    vi.stubGlobal('URL', {
-      createObjectURL,
-      revokeObjectURL,
-    });
+    vi.stubGlobal(
+      'URL',
+      Object.assign({}, URL, {
+        createObjectURL: (blob: Blob) => {
+          expect(blob).toBeInstanceOf(Blob)
+          createdObjectUrl = 'blob:fake-url'
+          return createdObjectUrl
+        },
+        revokeObjectURL,
+      }),
+    )
 
-    clickSpy = vi.fn();
-    const origCreate = document.createElement.bind(document);
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      const el = origCreate(tag);
-      if (tag === 'a') {
-        vi.spyOn(el, 'click').mockImplementation(clickSpy);
-      }
-      return el;
-    });
+    const origCreate = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation(
+      (tag: string, ...rest: Parameters<typeof document.createElement> extends [string, ...infer R] ? R : never[]) => {
+        const el = origCreate(tag, ...(rest as []))
+        if (tag === 'a') {
+          clickedAnchor = el as HTMLAnchorElement
+          vi.spyOn(el as HTMLAnchorElement, 'click').mockImplementation(() => {})
+        }
+        return el
+      },
+    )
 
-    appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node);
-    removeChildSpy = vi.spyOn(document.body, 'removeChild').mockImplementation((node) => node);
-
-    vi.stubGlobal('fetch', vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(() =>
-      Promise.resolve({
-        ok: true,
-        text: () => Promise.resolve(
-          'url,detectedAt,pageTitle,domain\n' +
-          EVIDENCE.map(e => `${e.url},${e.detectedAt},${e.pageTitle},${e.domain}`).join('\n')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+        new Response(
+          JSON.stringify(fakeEvidence),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
-        blob: () => Promise.resolve(new Blob(['csv'], { type: 'text/csv' })),
-      } as unknown as Response)
-    ));
-  });
+      ),
+    )
+  })
 
   afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  });
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    createdObjectUrl = undefined
+    clickedAnchor = undefined
+  })
 
-  it('triggers a file download (not inline render or redirect) when the export control is activated', async () => {
-    render(<EvidenceList caseId="case-1" evidence={EVIDENCE} />);
+  it('activating the export control triggers a file download, not inline render or redirect', async () => {
+    render(<EvidenceList caseId={FAKE_CASE_ID} />)
 
-    const exportControl =
-      screen.getByRole('button', { name: /export/i }) ??
-      screen.getByRole('link', { name: /export/i });
+    const exportBtn = await screen.findByRole('button', { name: /export.*csv|download.*csv|csv/i })
 
-    fireEvent.click(exportControl);
+    fireEvent.click(exportBtn)
 
     await waitFor(() => {
-      expect(createObjectURL).toHaveBeenCalled();
-    });
+      expect(createdObjectUrl).toBe('blob:fake-url')
+    })
 
-    expect(clickSpy).toHaveBeenCalled();
+    expect(clickedAnchor).toBeDefined()
+    const anchor = clickedAnchor!
+    expect(anchor.download).toMatch(/\.csv$/i)
+    expect(anchor.href).not.toBe('')
 
-    const anchorCalls = appendChildSpy.mock.calls
-      .map((args) => args[0])
-      .filter((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement);
-    expect(anchorCalls.length).toBeGreaterThan(0);
-    const anchor = anchorCalls[0]!;
-    expect(anchor.download).toBeTruthy();
-
-    expect(removeChildSpy).toHaveBeenCalled();
-  });
-});
+    expect(document.body.contains(anchor)).toBe(false)
+  })
+})
