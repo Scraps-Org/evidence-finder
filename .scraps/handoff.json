@@ -1,42 +1,48 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "343e5094f3e1cee62693538e1840a89e99b98bd6"
+      "2e26a422a8cdfa08bce77e56f27548cdc54c5712",
+      "00ec024d33893c070d062777db0a3a8b9181e23a"
     ]
   },
-  "base_ref": "2b84350301eee53f74230357e94b651bed67d06b",
-  "code_integration_sha": "64166a4c93dd05f32ae0c0edfe41fa5164636fd8",
+  "base_ref": "a80f08012446e4fde6c0edf4b386b3424c356d19",
+  "code_integration_sha": "fcf512508595ba6212af7189a9ad3f544b38931e",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-5922377dac34",
-  "dispatch_id": "eval-evidence-finder-5922377dac34",
+  "correlation_id": "eval-evidence-finder-fe038c18fcbd",
+  "dispatch_id": "eval-evidence-finder-fe038c18fcbd-a21",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-25T15:41:10.510444Z",
-  "goal_doc_sha": "5922377dac34",
-  "goal_id": "evidence-finder-5922377dac34",
-  "integration_branch": "scraps/goal/evidence-finder-5922377dac34",
+  "generated_at": "2026-06-26T01:39:16.190598Z",
+  "goal_doc_sha": "fe038c18fcbd",
+  "goal_id": "evidence-finder-fe038c18fcbd",
+  "integration_branch": "scraps/goal/evidence-finder-fe038c18fcbd",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "69b3fefbd11fd02388e51610f30db542a3ec1f81123c97e13e834c1340671499"
+    "sha256": "f849d98a8c1b2f76b5e0339da6b81b79dbcfdcce7cb74abd5c0cdf681a12e075"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "search-source-contract",
+        "name": "brave-source",
+        "status": "green",
+        "tier": "extended"
+      },
+      {
+        "name": "search-route-candidate",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 1,
+    "merged_task_count": 2,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D6-source-adapter",
+      "criterion": "D7-text-search-brave",
       "how_measured": "deterministic_verification",
-      "observed": "verification_evidence (tasks: search-source-contract)"
+      "observed": "verification_evidence (tasks: brave-source, search-route-candidate)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -70,12 +76,7 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/acceptance/search-source-contract.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm typecheck",
+          "command": "pnpm exec vitest run tests/acceptance/brave-source-contract.test.ts",
           "exit_code": 0,
           "status": "passed"
         },
@@ -85,8 +86,51 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:search-source-contract",
-      "name": "search-source-contract",
+      "log_ref": "event:task.verification_evidence:brave-source",
+      "name": "brave-source",
+      "status": "green",
+      "tier": "extended"
+    },
+    {
+      "checks": [
+        {
+          "command": "pnpm install --frozen-lockfile",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma generate",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma migrate reset --force --skip-generate --skip-seed",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec vitest run tests/acceptance/brave-search-route.test.ts",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm exec prisma generate",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm build",
+          "exit_code": 0,
+          "status": "passed"
+        },
+        {
+          "command": "pnpm run typecheck",
+          "exit_code": 0,
+          "status": "passed"
+        }
+      ],
+      "log_ref": "event:task.verification_evidence:search-route-candidate",
+      "name": "search-route-candidate",
       "status": "green",
       "tier": "extended"
     }
