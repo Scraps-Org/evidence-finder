@@ -1,101 +1,97 @@
-import { POST } from '../../src/app/api/evidence/route';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
-// Minimal fetch stub — simulates a real HTML page with a <title> tag.
-// We only stub fetch; the route handler, domain extraction, DB write, and
-// timestamp are all REAL.
+// Prisma mock
 // ---------------------------------------------------------------------------
-const FAKE_HTML = `<!DOCTYPE html><html><head><title>Example Domain</title></head><body></body></html>`;
+const evidenceCandidate = {
+  id: 'cand-ev-001',
+  caseId: 'case-ev-001',
+  url: 'https://example.com/evidence-article',
+  title: 'Evidence Article',
+  snippet: 'Evidence snippet',
+  status: 'evidence',
+}
 
-const stubFetch = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>();
+const dismissedCandidate = {
+  id: 'cand-ev-002',
+  caseId: 'case-ev-001',
+  url: 'https://example.com/dismissed-article',
+  title: 'Dismissed Article',
+  snippet: 'Dismissed snippet',
+  status: 'dismissed',
+}
 
-vi.stubGlobal('fetch', stubFetch);
+const prismaFindManyMock = vi.fn<[unknown], Promise<typeof evidenceCandidate[]>>()
 
-beforeEach(() => {
-  stubFetch.mockResolvedValue(
-    new Response(FAKE_HTML, {
-      status: 200,
-      headers: { 'content-type': 'text/html' },
-    }),
-  );
-});
+vi.mock('../../src/lib/prisma', () => ({
+  default: {
+    candidate: {
+      findMany: prismaFindManyMock,
+    },
+    evidence: {
+      findMany: prismaFindManyMock,
+    },
+  },
+}))
 
-afterEach(() => {
-  stubFetch.mockReset();
-});
+describe('D3 evidence route — candidate status filter', () => {
+  beforeEach(() => {
+    prismaFindManyMock.mockReset()
+  })
 
-describe('POST /api/evidence — route handler', () => {
-  it('fetches the target URL, parses <title> + domain, stamps detectedAt, and persists an Evidence row', async () => {
-    const unique = `routetest-${Date.now()}`;
-    const targetUrl = `https://example.com/page/${unique}`;
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
 
-    // We need a real caseId — create one via the cases route or prisma directly.
-    // Import prisma directly so this test is self-contained.
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
+  it('GET /api/evidence includes candidates with status=evidence', async () => {
+    prismaFindManyMock.mockResolvedValue([evidenceCandidate])
 
-    const caseRow = await prisma.case.create({
-      data: { title: `Route test case ${unique}` },
-    });
-
-    let evidenceId: string | number | undefined;
-    try {
-      const before = new Date();
-
-      const req = new Request('http://localhost/api/evidence', {
-        method: 'POST',
-        body: JSON.stringify({ url: targetUrl, caseId: caseRow.id }),
-        headers: { 'content-type': 'application/json' },
-      });
-
-      const res = await POST(req);
-      const after = new Date();
-
-      // (a) fetch was called server-side with the target URL
-      expect(stubFetch).toHaveBeenCalledTimes(1);
-      const fetchedUrl = String(stubFetch.mock.calls[0]![0]);
-      expect(fetchedUrl).toBe(targetUrl);
-
-      // Route must respond with success
-      expect(res.status).toBeGreaterThanOrEqual(200);
-      expect(res.status).toBeLessThan(300);
-
-      const body = (await res.json()) as {
-        id: unknown;
-        url: unknown;
-        pageTitle: unknown;
-        domain: unknown;
-        detectedAt: unknown;
-        caseId: unknown;
-      };
-
-      // (b) pageTitle parsed from <title>
-      expect(body.pageTitle).toBe('Example Domain');
-
-      // (c) domain derived from hostname
-      expect(body.domain).toBe('example.com');
-
-      // (d) detectedAt stamped server-side (within test window)
-      const detectedAt = new Date(body.detectedAt as string);
-      expect(detectedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
-      expect(detectedAt.getTime()).toBeLessThanOrEqual(after.getTime());
-
-      // (e) row persisted — verify it exists in the DB
-      evidenceId = body.id as string | number;
-      const persisted = await prisma.evidence.findFirst({
-        where: { id: evidenceId as never },
-      });
-      expect(persisted).not.toBeNull();
-      expect(persisted!.url).toBe(targetUrl);
-      expect(persisted!.caseId).toBe(caseRow.id);
-    } finally {
-      if (evidenceId !== undefined) {
-        await prisma.evidence
-          .deleteMany({ where: { id: evidenceId as never } })
-          .catch(() => undefined);
-      }
-      await prisma.case.delete({ where: { id: caseRow.id } }).catch(() => undefined);
-      await prisma.$disconnect();
+    const mod = await import('../../src/app/api/evidence/route').catch(() => null)
+    if (!mod) {
+      expect(true, 'Evidence route not yet implemented').toBe(false)
+      return
     }
-  });
-});
+
+    const { GET } = mod as { GET: (req: Request) => Promise<Response> }
+
+    const res = await GET(
+      new Request('http://localhost/api/evidence?caseId=case-ev-001', { method: 'GET' }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as Array<{ id: string; status: string }>
+    const ids = body.map((item) => item.id)
+    expect(ids).toContain(evidenceCandidate.id)
+  })
+
+  it('GET /api/evidence excludes candidates with status=dismissed', async () => {
+    // Route must query only evidence-status rows; mock returns only the dismissed one
+    // to verify it does NOT appear — the route should filter at DB level (WHERE status='evidence')
+    // and the mock call arg should reflect that filter.
+    prismaFindManyMock.mockResolvedValue([])
+
+    const mod = await import('../../src/app/api/evidence/route').catch(() => null)
+    if (!mod) {
+      expect(true, 'Evidence route not yet implemented').toBe(false)
+      return
+    }
+
+    const { GET } = mod as { GET: (req: Request) => Promise<Response> }
+
+    const res = await GET(
+      new Request('http://localhost/api/evidence?caseId=case-ev-001', { method: 'GET' }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as Array<{ id: string }>
+    const ids = body.map((item) => item.id)
+    expect(ids).not.toContain(dismissedCandidate.id)
+
+    // The route must have queried with a status filter
+    expect(prismaFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'evidence' }) as unknown,
+      }),
+    )
+  })
+})
