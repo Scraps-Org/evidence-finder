@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Prisma mock
@@ -10,7 +10,7 @@ const evidenceCandidate = {
   title: 'Export Evidence Article',
   snippet: 'Export evidence snippet',
   status: 'evidence',
-}
+};
 
 const dismissedCandidate = {
   id: 'cand-exp-002',
@@ -19,9 +19,9 @@ const dismissedCandidate = {
   title: 'Export Dismissed Article',
   snippet: 'Dismissed',
   status: 'dismissed',
-}
+};
 
-const prismaFindManyMock = vi.fn<[unknown], Promise<typeof evidenceCandidate[]>>()
+const prismaFindManyMock = vi.fn<[unknown], Promise<(typeof evidenceCandidate)[]>>();
 
 vi.mock('../../src/lib/prisma', () => ({
   default: {
@@ -32,62 +32,70 @@ vi.mock('../../src/lib/prisma', () => ({
       findMany: prismaFindManyMock,
     },
   },
-}))
+}));
 
 describe('D5 export route — candidate status filter', () => {
   beforeEach(() => {
-    prismaFindManyMock.mockReset()
-  })
+    prismaFindManyMock.mockReset();
+  });
 
   afterEach(() => {
-    vi.restoreAllMocks()
-  })
+    vi.restoreAllMocks();
+  });
 
   it('GET /api/cases/[caseId]/export includes candidates with status=evidence', async () => {
-    prismaFindManyMock.mockResolvedValue([evidenceCandidate])
+    prismaFindManyMock.mockResolvedValue([evidenceCandidate]);
 
-    const mod = await import('../../src/app/api/cases/[caseId]/export/route').catch(() => null)
+    const mod = await import('../../src/app/api/cases/[caseId]/export/route').catch(() => null);
     if (!mod) {
-      expect(true, 'Export route not yet implemented').toBe(false)
-      return
+      expect(true, 'Export route not yet implemented').toBe(false);
+      return;
     }
 
-    const { GET } = mod as { GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response> }
+    const { GET } = mod as {
+      GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response>;
+    };
 
     const res = await GET(
-      new Request(`http://localhost/api/cases/${evidenceCandidate.caseId}/export`, { method: 'GET' }),
+      new Request(`http://localhost/api/cases/${evidenceCandidate.caseId}/export`, {
+        method: 'GET',
+      }),
       { params: { caseId: evidenceCandidate.caseId } },
-    )
+    );
 
-    expect(res.status).toBe(200)
-    const text = await res.text()
-    expect(text).toContain(evidenceCandidate.id)
-  })
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain(evidenceCandidate.id);
+  });
 
   it('GET /api/cases/[caseId]/export excludes candidates with status=dismissed', async () => {
-    prismaFindManyMock.mockResolvedValue([])
+    prismaFindManyMock.mockResolvedValue([]);
 
-    const mod = await import('../../src/app/api/cases/[caseId]/export/route').catch(() => null)
+    const mod = await import('../../src/app/api/cases/[caseId]/export/route').catch(() => null);
     if (!mod) {
-      expect(true, 'Export route not yet implemented').toBe(false)
-      return
+      expect(true, 'Export route not yet implemented').toBe(false);
+      return;
     }
 
-    const { GET } = mod as { GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response> }
+    const { GET } = mod as {
+      GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response>;
+    };
 
     const res = await GET(
-      new Request(`http://localhost/api/cases/${dismissedCandidate.caseId}/export`, { method: 'GET' }),
+      new Request(`http://localhost/api/cases/${dismissedCandidate.caseId}/export`, {
+        method: 'GET',
+      }),
       { params: { caseId: dismissedCandidate.caseId } },
-    )
+    );
 
-    expect(res.status).toBe(200)
-    const text = await res.text()
-    expect(text).not.toContain(dismissedCandidate.id)
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toContain(dismissedCandidate.id);
 
     expect(prismaFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: 'evidence' }) as unknown,
       }),
-    )
-  })
-})
+    );
+  });
+});

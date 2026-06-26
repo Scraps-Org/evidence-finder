@@ -36,7 +36,7 @@ describe('PATCH /api/candidates/[candidateId] — triage route', () => {
     const res = await PATCH(req, { params: Promise.resolve({ candidateId: 'cand-1' }) });
 
     expect(res.status).toBe(200);
-    const body = await res.json() as { status: string };
+    const body = (await res.json()) as { status: string };
     expect(body.status).toBe('evidence');
     expect(vi.mocked(prisma.candidate.update)).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -65,7 +65,7 @@ describe('PATCH /api/candidates/[candidateId] — triage route', () => {
     const res = await PATCH(req, { params: Promise.resolve({ candidateId: 'cand-1' }) });
 
     expect(res.status).toBe(200);
-    const body = await res.json() as { status: string };
+    const body = (await res.json()) as { status: string };
     expect(body.status).toBe('dismissed');
     expect(vi.mocked(prisma.candidate.update)).toHaveBeenCalledWith(
       expect.objectContaining({

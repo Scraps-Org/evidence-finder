@@ -31,7 +31,7 @@ describe('GET /api/evidence — D3 evidence list', () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    const body = await res.json() as unknown[];
+    const body = (await res.json()) as unknown[];
     expect(Array.isArray(body)).toBe(true);
     const ids = body.map((r) => (r as { id: string }).id);
     expect(ids).toContain('cand-ev-1');
@@ -51,7 +51,7 @@ describe('GET /api/evidence — D3 evidence list', () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    const body = await res.json() as unknown[];
+    const body = (await res.json()) as unknown[];
     expect(body).toHaveLength(0);
 
     expect(vi.mocked(prisma.candidate.findMany)).toHaveBeenCalledWith(

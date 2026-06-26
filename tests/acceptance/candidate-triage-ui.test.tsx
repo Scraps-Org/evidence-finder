@@ -5,8 +5,20 @@ import CaseView from '../../src/app/cases/[caseId]/page';
 const CASE_ID = 'case-triage-ui-001';
 
 const mockCandidates = [
-  { id: 'cand-1', url: 'https://example.com/a', title: 'Candidate Alpha', status: 'pending', caseId: CASE_ID },
-  { id: 'cand-2', url: 'https://example.com/b', title: 'Candidate Beta', status: 'pending', caseId: CASE_ID },
+  {
+    id: 'cand-1',
+    url: 'https://example.com/a',
+    title: 'Candidate Alpha',
+    status: 'pending',
+    caseId: CASE_ID,
+  },
+  {
+    id: 'cand-2',
+    url: 'https://example.com/b',
+    title: 'Candidate Beta',
+    status: 'pending',
+    caseId: CASE_ID,
+  },
 ];
 
 describe('CaseView candidate triage UI', () => {
