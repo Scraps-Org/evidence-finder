@@ -1,81 +1,140 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import userEvent from '@testing-library/user-event'
-import Page from '../../src/app/page'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import CaseView from '../../src/app/cases/[caseId]/page';
 
-const CASE_ID = 'case-triage-ui-001'
-const CANDIDATE_ID = 'cand-ui-001'
+const CASE_ID = 'case-triage-ui-001';
 
-const mockCandidate = {
-  id: CANDIDATE_ID,
-  caseId: CASE_ID,
-  url: 'https://example.com/article',
-  title: 'Suspicious Article',
-  snippet: 'Something suspicious',
-  status: 'pending',
-}
+const mockCandidates = [
+  { id: 'cand-1', url: 'https://example.com/a', title: 'Candidate Alpha', status: 'pending', caseId: CASE_ID },
+  { id: 'cand-2', url: 'https://example.com/b', title: 'Candidate Beta', status: 'pending', caseId: CASE_ID },
+];
 
-const mockCase = {
-  id: CASE_ID,
-  name: 'Test Case',
-  candidates: [mockCandidate],
-}
-
-describe('D8 candidate triage UI', () => {
+describe('CaseView candidate triage UI', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-          const method = init?.method?.toUpperCase() ?? 'GET'
+      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>((url) => {
+        const u = String(url);
+        if (u.includes('/api/cases/') && u.includes('/candidates')) {
+          return Promise.resolve(
+            new Response(JSON.stringify(mockCandidates), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          );
+        }
+        if (u.includes('/api/candidates/')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ success: true }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          );
+        }
+        return Promise.resolve(new Response('{}', { status: 200 }));
+      }),
+    );
+  });
 
-          if (method === 'GET' && url.includes('/api/cases')) {
-            return new Response(
-              JSON.stringify([mockCase]),
-              { status: 200, headers: { 'Content-Type': 'application/json' } },
-            )
-          }
+  it('renders detected candidates as a list when the case view loads', async () => {
+    render(<CaseView params={Promise.resolve({ caseId: CASE_ID })} />);
+    await waitFor(() => {
+      expect(screen.getByText('Candidate Alpha')).toBeDefined();
+    });
+    expect(screen.getByText('Candidate Beta')).toBeDefined();
+  });
 
-          if (url.includes(`/api/cases/${CASE_ID}/candidates`) || url.includes('/api/candidates')) {
-            if (method === 'GET') {
-              return new Response(
-                JSON.stringify([mockCandidate]),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-              )
-            }
-            if (method === 'PATCH' || method === 'POST') {
-              return new Response(
-                JSON.stringify({ ...mockCandidate, status: 'evidence' }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-              )
-            }
-          }
+  it('provides a confirm action for each candidate', async () => {
+    render(<CaseView params={Promise.resolve({ caseId: CASE_ID })} />);
+    await waitFor(() => {
+      expect(screen.getByText('Candidate Alpha')).toBeDefined();
+    });
+    const confirmButtons = screen.getAllByRole('button', { name: /confirm/i });
+    expect(confirmButtons.length).toBeGreaterThanOrEqual(1);
+  });
 
-          return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
-        },
-      ),
-    )
-  })
+  it('provides a dismiss action for each candidate', async () => {
+    render(<CaseView params={Promise.resolve({ caseId: CASE_ID })} />);
+    await waitFor(() => {
+      expect(screen.getByText('Candidate Alpha')).toBeDefined();
+    });
+    const dismissButtons = screen.getAllByRole('button', { name: /dismiss/i });
+    expect(dismissButtons.length).toBeGreaterThanOrEqual(1);
+  });
 
-  it('lists detected candidates when the case view is opened', async () => {
-    render(<Page />)
+  it('calls the triage action with status=evidence when confirm is clicked', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>((url) => {
+      const u = String(url);
+      if (u.includes('/api/cases/') && u.includes('/candidates')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(mockCandidates), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<CaseView params={Promise.resolve({ caseId: CASE_ID })} />);
+    await waitFor(() => {
+      expect(screen.getByText('Candidate Alpha')).toBeDefined();
+    });
+
+    const confirmButtons = screen.getAllByRole('button', { name: /confirm/i });
+    fireEvent.click(confirmButtons[0]!);
 
     await waitFor(() => {
-      expect(screen.getByText('Suspicious Article')).toBeDefined()
-    }, { timeout: 3000 })
-  })
+      const triageCalls = fetchMock.mock.calls.filter(([url, init]) => {
+        const u = String(url);
+        const body = typeof init?.body === 'string' ? init.body : '';
+        return u.includes('/api/candidates/') && body.includes('evidence');
+      });
+      expect(triageCalls.length).toBeGreaterThanOrEqual(1);
+    });
+  });
 
-  it('renders confirm and dismiss controls for each candidate', async () => {
-    render(<Page />)
+  it('calls the triage action with status=dismissed when dismiss is clicked', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>((url) => {
+      const u = String(url);
+      if (u.includes('/api/cases/') && u.includes('/candidates')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(mockCandidates), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<CaseView params={Promise.resolve({ caseId: CASE_ID })} />);
+    await waitFor(() => {
+      expect(screen.getByText('Candidate Alpha')).toBeDefined();
+    });
+
+    const dismissButtons = screen.getAllByRole('button', { name: /dismiss/i });
+    fireEvent.click(dismissButtons[0]!);
 
     await waitFor(() => {
-      expect(screen.getByText('Suspicious Article')).toBeDefined()
-    }, { timeout: 3000 })
-
-    const confirmBtn = screen.queryByRole('button', { name: /confirm/i })
-    const dismissBtn = screen.queryByRole('button', { name: /dismiss/i })
-
-    expect(confirmBtn ?? dismissBtn).not.toBeNull()
-  })
-})
+      const triageCalls = fetchMock.mock.calls.filter(([url, init]) => {
+        const u = String(url);
+        const body = typeof init?.body === 'string' ? init.body : '';
+        return u.includes('/api/candidates/') && body.includes('dismissed');
+      });
+      expect(triageCalls.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
