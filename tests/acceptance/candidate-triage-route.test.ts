@@ -1,108 +1,87 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-
-// ---------------------------------------------------------------------------
-// Prisma mock — must be hoisted before any import that transitively pulls prisma
-// ---------------------------------------------------------------------------
-const mockCandidate = {
-  id: 'cand-route-001',
-  caseId: 'case-route-001',
-  url: 'https://example.com/route-article',
-  title: 'Route Article',
-  snippet: 'Snippet',
-  status: 'pending',
-}
-
-const prismaUpdateMock = vi.fn<[unknown], Promise<typeof mockCandidate>>()
-const prismaFindManyMock = vi.fn<[unknown], Promise<typeof mockCandidate[]>>()
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PATCH } from '../../src/app/api/candidates/[candidateId]/route';
 
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     candidate: {
-      update: prismaUpdateMock,
-      findMany: prismaFindManyMock,
+      update: vi.fn(),
+      findUnique: vi.fn(),
     },
   },
-}))
+}));
 
-describe('D8 candidate triage route — confirm action', () => {
-  beforeEach(() => {
-    prismaUpdateMock.mockReset()
-    prismaFindManyMock.mockReset()
-    prismaUpdateMock.mockResolvedValue({ ...mockCandidate, status: 'evidence' })
-    prismaFindManyMock.mockResolvedValue([mockCandidate])
-  })
+describe('PATCH /api/candidates/[candidateId] — triage route', () => {
+  beforeEach(async () => {
+    const { default: prisma } = await import('../../src/lib/prisma');
+    vi.mocked(prisma.candidate.update).mockReset();
+    vi.mocked(prisma.candidate.findUnique).mockReset();
+  });
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
+  it('sets status to evidence when action=confirm', async () => {
+    const { default: prisma } = await import('../../src/lib/prisma');
+    vi.mocked(prisma.candidate.update).mockResolvedValue({
+      id: 'cand-1',
+      status: 'evidence',
+      url: 'https://example.com',
+      title: 'Test',
+      caseId: 'case-1',
+      createdAt: new Date(),
+    } as never);
 
-  it('PATCH /api/cases/[caseId]/candidates/[candidateId] with status=evidence updates the Candidate row', async () => {
-    // Dynamically import the route handler AFTER mocks are in place.
-    // The route does not exist yet — the coder writes it; this test defines the contract.
-    const mod = await import('../../src/app/api/cases/[caseId]/candidates/[candidateId]/route').catch(() => null)
-    if (!mod) {
-      // Route not yet implemented — assert the mock is wired but skip execution
-      // so the test fails only at the handler assertion level, not at import.
-      expect(true, 'Route handler not yet implemented — coder must create it').toBe(false)
-      return
-    }
+    const req = new Request('http://test/api/candidates/cand-1', {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'evidence' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ candidateId: 'cand-1' }) });
 
-    const { PATCH } = mod as { PATCH: (req: Request, ctx: { params: { caseId: string; candidateId: string } }) => Promise<Response> }
-
-    const req = new Request(
-      `http://localhost/api/cases/${mockCandidate.caseId}/candidates/${mockCandidate.id}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'evidence' }),
-        headers: { 'content-type': 'application/json' },
-      },
-    )
-
-    const res = await PATCH(req, { params: { caseId: mockCandidate.caseId, candidateId: mockCandidate.id } })
-
-    expect(res.status).toBe(200)
-    expect(prismaUpdateMock).toHaveBeenCalledWith(
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe('evidence');
+    expect(vi.mocked(prisma.candidate.update)).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: mockCandidate.id }) as unknown,
+        where: expect.objectContaining({ id: 'cand-1' }) as unknown,
         data: expect.objectContaining({ status: 'evidence' }) as unknown,
       }),
-    )
+    );
+  });
 
-    const body = await res.json() as { status: string }
-    expect(body.status).toBe('evidence')
-  })
+  it('sets status to dismissed when action=dismiss', async () => {
+    const { default: prisma } = await import('../../src/lib/prisma');
+    vi.mocked(prisma.candidate.update).mockResolvedValue({
+      id: 'cand-1',
+      status: 'dismissed',
+      url: 'https://example.com',
+      title: 'Test',
+      caseId: 'case-1',
+      createdAt: new Date(),
+    } as never);
 
-  it('PATCH /api/cases/[caseId]/candidates/[candidateId] with status=dismissed sets status to dismissed', async () => {
-    prismaUpdateMock.mockResolvedValue({ ...mockCandidate, status: 'dismissed' })
+    const req = new Request('http://test/api/candidates/cand-1', {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'dismissed' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ candidateId: 'cand-1' }) });
 
-    const mod = await import('../../src/app/api/cases/[caseId]/candidates/[candidateId]/route').catch(() => null)
-    if (!mod) {
-      expect(true, 'Route handler not yet implemented — coder must create it').toBe(false)
-      return
-    }
-
-    const { PATCH } = mod as { PATCH: (req: Request, ctx: { params: { caseId: string; candidateId: string } }) => Promise<Response> }
-
-    const req = new Request(
-      `http://localhost/api/cases/${mockCandidate.caseId}/candidates/${mockCandidate.id}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'dismissed' }),
-        headers: { 'content-type': 'application/json' },
-      },
-    )
-
-    const res = await PATCH(req, { params: { caseId: mockCandidate.caseId, candidateId: mockCandidate.id } })
-
-    expect(res.status).toBe(200)
-    expect(prismaUpdateMock).toHaveBeenCalledWith(
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe('dismissed');
+    expect(vi.mocked(prisma.candidate.update)).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: mockCandidate.id }) as unknown,
+        where: expect.objectContaining({ id: 'cand-1' }) as unknown,
         data: expect.objectContaining({ status: 'dismissed' }) as unknown,
       }),
-    )
+    );
+  });
 
-    const body = await res.json() as { status: string }
-    expect(body.status).toBe('dismissed')
-  })
-})
+  it('returns 400 for an invalid status value', async () => {
+    const req = new Request('http://test/api/candidates/cand-1', {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'bogus' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ candidateId: 'cand-1' }) });
+    expect(res.status).toBe(400);
+  });
+});
