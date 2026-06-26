@@ -3,10 +3,10 @@ product: "evidence-finder"
 owner: lean-startup-agent
 status: active
 updated: 2026-06-26
-goal_version: dece06c268b8
+goal_version: 9fafe09f12e8
 acceptance:
-  - id: D9-recall-and-referral
-    hint: "The detection view renders a static notice that search surfaces only publicly-indexed exposure (closed platforms like Telegram/forums need manual reporting), and renders referral links to StopNCII.org, NCMEC Take It Down, and Google's explicit-image removal as downstream takedown actions (links only — not scanners). build + tsc pass."
+  - id: D10-case-create-ui
+    hint: "The home page (/) renders a client component with an identifying-terms text input and a submit button (labeled \"생성\"/\"create\"); submitting POSTs the terms to the existing /api/cases route and on success navigates to /cases/<newId> via the Next.js router (useRouter().push). Empty or whitespace-only input does not create a case and does not navigate. build + tsc pass."
     high_impact: true
   - id: PKG-HEALTH
     hint: "clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다."
@@ -19,7 +19,7 @@ acceptance:
 
 ## 목표 (1줄)
 
-The user sees an honest recall-limit notice and referral links to takedown channels.
+A user can create a case directly from the home page by entering identifying terms and pressing a button, then lands on that case's view.
 
 ## 해야할 일
 
@@ -41,7 +41,7 @@ Out of scope:
 
 frontmatter `acceptance` 와 1:1. evaluator 가 게이트에서 판단형 기준(P1)으로 도출.
 
-- D9-recall-and-referral: The detection view renders a static notice that search surfaces only publicly-indexed exposure (closed platforms like Telegram/forums need manual reporting), and renders referral links to StopNCII.org, NCMEC Take It Down, and Google's explicit-image removal as downstream takedown actions (links only — not scanners). build + tsc pass.
+- D10-case-create-ui: The home page (/) renders a client component with an identifying-terms text input and a submit button (labeled "생성"/"create"); submitting POSTs the terms to the existing /api/cases route and on success navigates to /cases/<newId> via the Next.js router (useRouter().push). Empty or whitespace-only input does not create a case and does not navigate. build + tsc pass.
 - PKG-HEALTH: clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다.
 
 ## 코딩 가이드 (planner)
