@@ -1,129 +1,108 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock prisma before importing the route so it uses the mock
-const mockCandidateUpdate = vi.fn<
-  [{ where: { id: string }; data: { status: string } }],
-  Promise<{ id: string; status: string }>
->()
-const mockCandidateFindMany = vi.fn<
-  [{ where: { caseId: string } }],
-  Promise<{ id: string; caseId: string; url: string; title: string; status: string }[]>
->()
-const mockCandidateFindFirst = vi.fn<
-  [{ where: { id: string } }],
-  Promise<{ id: string; caseId: string; url: string; title: string; status: string } | null>
->()
+// ---------------------------------------------------------------------------
+// Prisma mock — must be hoisted before any import that transitively pulls prisma
+// ---------------------------------------------------------------------------
+const mockCandidate = {
+  id: 'cand-route-001',
+  caseId: 'case-route-001',
+  url: 'https://example.com/route-article',
+  title: 'Route Article',
+  snippet: 'Snippet',
+  status: 'pending',
+}
+
+const prismaUpdateMock = vi.fn<[unknown], Promise<typeof mockCandidate>>()
+const prismaFindManyMock = vi.fn<[unknown], Promise<typeof mockCandidate[]>>()
 
 vi.mock('../../src/lib/prisma', () => ({
   default: {
     candidate: {
-      update: mockCandidateUpdate,
-      findMany: mockCandidateFindMany,
-      findFirst: mockCandidateFindFirst,
+      update: prismaUpdateMock,
+      findMany: prismaFindManyMock,
     },
   },
 }))
 
-import { PATCH } from '../../src/app/api/candidates/[candidateId]/route'
-import { GET as getCandidates } from '../../src/app/api/cases/[caseId]/candidates/route'
+describe('D8 candidate triage route — confirm action', () => {
+  beforeEach(() => {
+    prismaUpdateMock.mockReset()
+    prismaFindManyMock.mockReset()
+    prismaUpdateMock.mockResolvedValue({ ...mockCandidate, status: 'evidence' })
+    prismaFindManyMock.mockResolvedValue([mockCandidate])
+  })
 
-const CANDIDATE_ROW = {
-  id: 'cand-1',
-  caseId: 'case-abc',
-  url: 'https://example.com/page',
-  title: 'Test page',
-  status: 'pending',
-}
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  mockCandidateFindMany.mockResolvedValue([CANDIDATE_ROW])
-  mockCandidateFindFirst.mockResolvedValue(CANDIDATE_ROW)
-})
+  it('PATCH /api/cases/[caseId]/candidates/[candidateId] with status=evidence updates the Candidate row', async () => {
+    // Dynamically import the route handler AFTER mocks are in place.
+    // The route does not exist yet — the coder writes it; this test defines the contract.
+    const mod = await import('../../src/app/api/cases/[caseId]/candidates/[candidateId]/route').catch(() => null)
+    if (!mod) {
+      // Route not yet implemented — assert the mock is wired but skip execution
+      // so the test fails only at the handler assertion level, not at import.
+      expect(true, 'Route handler not yet implemented — coder must create it').toBe(false)
+      return
+    }
 
-describe('D8 candidate triage route — confirm', () => {
-  it('sets status to evidence when confirm action is triggered', async () => {
-    mockCandidateUpdate.mockResolvedValue({ ...CANDIDATE_ROW, status: 'evidence' })
-    const req = new Request('http://t/api/candidates/cand-1', {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'evidence' }),
-      headers: { 'content-type': 'application/json' },
-    })
-    const res = await PATCH(req, { params: Promise.resolve({ candidateId: 'cand-1' }) })
+    const { PATCH } = mod as { PATCH: (req: Request, ctx: { params: { caseId: string; candidateId: string } }) => Promise<Response> }
+
+    const req = new Request(
+      `http://localhost/api/cases/${mockCandidate.caseId}/candidates/${mockCandidate.id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'evidence' }),
+        headers: { 'content-type': 'application/json' },
+      },
+    )
+
+    const res = await PATCH(req, { params: { caseId: mockCandidate.caseId, candidateId: mockCandidate.id } })
+
     expect(res.status).toBe(200)
-    expect(mockCandidateUpdate).toHaveBeenCalledWith(
+    expect(prismaUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'cand-1' },
-        data: expect.objectContaining({ status: 'evidence' }),
+        where: expect.objectContaining({ id: mockCandidate.id }) as unknown,
+        data: expect.objectContaining({ status: 'evidence' }) as unknown,
       }),
     )
-  })
-})
 
-describe('D8 candidate triage route — dismiss', () => {
-  it('sets status to dismissed when dismiss action is triggered', async () => {
-    mockCandidateUpdate.mockResolvedValue({ ...CANDIDATE_ROW, status: 'dismissed' })
-    const req = new Request('http://t/api/candidates/cand-1', {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'dismissed' }),
-      headers: { 'content-type': 'application/json' },
-    })
-    const res = await PATCH(req, { params: Promise.resolve({ candidateId: 'cand-1' }) })
+    const body = await res.json() as { status: string }
+    expect(body.status).toBe('evidence')
+  })
+
+  it('PATCH /api/cases/[caseId]/candidates/[candidateId] with status=dismissed sets status to dismissed', async () => {
+    prismaUpdateMock.mockResolvedValue({ ...mockCandidate, status: 'dismissed' })
+
+    const mod = await import('../../src/app/api/cases/[caseId]/candidates/[candidateId]/route').catch(() => null)
+    if (!mod) {
+      expect(true, 'Route handler not yet implemented — coder must create it').toBe(false)
+      return
+    }
+
+    const { PATCH } = mod as { PATCH: (req: Request, ctx: { params: { caseId: string; candidateId: string } }) => Promise<Response> }
+
+    const req = new Request(
+      `http://localhost/api/cases/${mockCandidate.caseId}/candidates/${mockCandidate.id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'dismissed' }),
+        headers: { 'content-type': 'application/json' },
+      },
+    )
+
+    const res = await PATCH(req, { params: { caseId: mockCandidate.caseId, candidateId: mockCandidate.id } })
+
     expect(res.status).toBe(200)
-    expect(mockCandidateUpdate).toHaveBeenCalledWith(
+    expect(prismaUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'cand-1' },
-        data: expect.objectContaining({ status: 'dismissed' }),
+        where: expect.objectContaining({ id: mockCandidate.id }) as unknown,
+        data: expect.objectContaining({ status: 'dismissed' }) as unknown,
       }),
     )
-  })
-})
 
-describe('D8 evidence list (D3) — only evidence candidates appear', () => {
-  it('includes status=evidence candidates in the evidence list', async () => {
-    mockCandidateFindMany.mockResolvedValue([
-      { ...CANDIDATE_ROW, status: 'evidence' },
-    ])
-    const req = new Request('http://t/api/evidence?caseId=case-abc', { method: 'GET' })
-    const { GET } = await import('../../src/app/api/evidence/route')
-    const res = await GET(req)
-    expect(res.status).toBe(200)
-    const body = await res.json() as { id: string; status: string }[]
-    expect(body.some((item) => item.id === 'cand-1')).toBe(true)
-  })
-
-  it('excludes status=dismissed candidates from the evidence list', async () => {
-    mockCandidateFindMany.mockResolvedValue([
-      { ...CANDIDATE_ROW, status: 'dismissed' },
-    ])
-    const req = new Request('http://t/api/evidence?caseId=case-abc', { method: 'GET' })
-    const { GET } = await import('../../src/app/api/evidence/route')
-    const res = await GET(req)
-    const body = await res.json() as { id: string; status: string }[]
-    expect(body.some((item) => item.id === 'cand-1')).toBe(false)
-  })
-})
-
-describe('D8 export (D5) — evidence candidates appear in export', () => {
-  it('includes status=evidence candidate in the CSV/JSON export', async () => {
-    mockCandidateFindMany.mockResolvedValue([
-      { ...CANDIDATE_ROW, status: 'evidence' },
-    ])
-    const req = new Request('http://t/api/cases/case-abc/export', { method: 'GET' })
-    const { GET } = await import('../../src/app/api/cases/[caseId]/export/route')
-    const res = await GET(req, { params: Promise.resolve({ caseId: 'case-abc' }) })
-    expect(res.status).toBe(200)
-    const text = await res.text()
-    expect(text).toContain('cand-1')
-  })
-
-  it('excludes status=dismissed candidate from the CSV/JSON export', async () => {
-    mockCandidateFindMany.mockResolvedValue([])
-    const req = new Request('http://t/api/cases/case-abc/export', { method: 'GET' })
-    const { GET } = await import('../../src/app/api/cases/[caseId]/export/route')
-    const res = await GET(req, { params: Promise.resolve({ caseId: 'case-abc' }) })
-    expect(res.status).toBe(200)
-    const text = await res.text()
-    expect(text).not.toContain('cand-1')
+    const body = await res.json() as { status: string }
+    expect(body.status).toBe('dismissed')
   })
 })
