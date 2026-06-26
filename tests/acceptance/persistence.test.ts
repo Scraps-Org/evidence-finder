@@ -14,7 +14,6 @@ describe('Candidate persistence (acceptance)', () => {
       data: {
         url: unique,
         title: 'sample',
-        snippet: 'sample',
         status: 'sample',
         caseId: 'sample',
       },
