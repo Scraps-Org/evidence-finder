@@ -2,11 +2,11 @@
 product: "evidence-finder"
 owner: lean-startup-agent
 status: active
-updated: 2026-06-25
-goal_version: fe038c18fcbd
+updated: 2026-06-26
+goal_version: be43169ce0ed
 acceptance:
-  - id: D7-text-search-brave
-    hint: "A `BraveSource` implements SearchSource via the Brave Search API (token from env, 15s timeout); an API route runs a case's terms through it and upserts results into a Prisma `Candidate` table (url unique per case, status \"new\", dedup so the same url inserts once); the call returns ≥1 normalized candidate. build + tsc pass."
+  - id: D8-candidate-triage
+    hint: "The case view lists candidates; a server action sets a candidate status to \"evidence\" (it then appears in the D3 evidence list + D5 export) or \"dismissed\" (it does not); status persists in the Candidate table. build + tsc pass."
     high_impact: true
   - id: PKG-HEALTH
     hint: "clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다."
@@ -19,7 +19,7 @@ acceptance:
 
 ## 목표 (1줄)
 
-A user can run a case's terms through a live web search and get candidate URLs.
+A user can confirm or dismiss detected candidates, promoting confirmed ones to evidence.
 
 ## 해야할 일
 
@@ -41,7 +41,7 @@ Out of scope:
 
 frontmatter `acceptance` 와 1:1. evaluator 가 게이트에서 판단형 기준(P1)으로 도출.
 
-- D7-text-search-brave: A `BraveSource` implements SearchSource via the Brave Search API (token from env, 15s timeout); an API route runs a case's terms through it and upserts results into a Prisma `Candidate` table (url unique per case, status "new", dedup so the same url inserts once); the call returns ≥1 normalized candidate. build + tsc pass.
+- D8-candidate-triage: The case view lists candidates; a server action sets a candidate status to "evidence" (it then appears in the D3 evidence list + D5 export) or "dismissed" (it does not); status persists in the Candidate table. build + tsc pass.
 - PKG-HEALTH: clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다.
 
 ## 코딩 가이드 (planner)
