@@ -24,3 +24,15 @@ model Evidence {
   caseId     String
   case       Case     @relation(fields: [caseId], references: [id])
 }
+
+model Candidate {
+  id        String   @id @default(cuid())
+  url       String
+  caseId    String
+  status    String   @default("new")
+  title     String?
+  createdAt DateTime @default(now())
+
+  @@unique([url, caseId])
+  @@index([caseId])
+}
