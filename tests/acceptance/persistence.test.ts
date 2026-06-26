@@ -13,10 +13,9 @@ describe('Candidate persistence (acceptance)', () => {
     const created = await prisma.candidate.create({
       data: {
         url: unique,
-        caseId: 'sample',
         title: 'sample',
-        snippet: 'sample',
         status: 'sample',
+        caseId: 'sample',
       },
     })
     expect(created).toBeTruthy()
