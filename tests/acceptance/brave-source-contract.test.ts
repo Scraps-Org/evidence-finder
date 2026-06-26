@@ -19,14 +19,12 @@ describe('BraveSource contract', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ web: { results: FAKE_RESULTS } }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
+      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+        new Response(JSON.stringify({ web: { results: FAKE_RESULTS } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     );
   });
 

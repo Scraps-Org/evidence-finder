@@ -3,7 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Prisma client mock — intercepts upsert calls without a real DB.
 // The dedup criterion is tested via idempotent upsert semantics.
 const upsertMock = vi.fn<
-  [{ where: { url_caseId: { url: string; caseId: string } }; update: Record<string, unknown>; create: Record<string, unknown> }],
+  [
+    {
+      where: { url_caseId: { url: string; caseId: string } };
+      update: Record<string, unknown>;
+      create: Record<string, unknown>;
+    },
+  ],
   Promise<{ id: string; url: string; caseId: string; status: string }>
 >();
 
@@ -29,7 +35,12 @@ describe('POST /api/cases/[caseId]/search — brave search route', () => {
 
   beforeEach(() => {
     searchMock.mockResolvedValue([{ url: CANDIDATE_URL, title: 'Example Article' }]);
-    upsertMock.mockResolvedValue({ id: 'cand-1', url: CANDIDATE_URL, caseId: CASE_ID, status: 'new' });
+    upsertMock.mockResolvedValue({
+      id: 'cand-1',
+      url: CANDIDATE_URL,
+      caseId: CASE_ID,
+      status: 'new',
+    });
   });
 
   afterEach(() => {
@@ -100,7 +111,7 @@ describe('POST /api/cases/[caseId]/search — brave search route', () => {
     });
     const res = await POST(req, { params: { caseId: CASE_ID } });
     expect(res.status).toBe(200);
-    const body = await res.json() as { candidates: { url: string }[] };
+    const body = (await res.json()) as { candidates: { url: string }[] };
     expect(Array.isArray(body.candidates)).toBe(true);
     expect(body.candidates.length).toBeGreaterThanOrEqual(1);
     for (const candidate of body.candidates) {
