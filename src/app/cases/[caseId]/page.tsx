@@ -1,69 +1,37 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-
-type Candidate = {
-  id: string;
-  url: string;
-  title: string;
-  status: string;
-  caseId: string;
-};
+import CandidateTriage from '~/components/CandidateTriage';
 
 export default function CaseView(props: { params: Promise<{ caseId: string }> }) {
-  const [caseId, setCaseId] = useState<string | null>(null);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    props.params.then(({ caseId }) => {
-      if (active) {
-        setCaseId(caseId);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [props.params]);
-
-  useEffect(() => {
-    if (!caseId) {
-      return;
-    }
-    let active = true;
-    fetch('/api/cases/' + caseId + '/candidates')
-      .then((res) => res.json())
-      .then((data: Candidate[]) => {
-        if (active) {
-          setCandidates(data);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [caseId]);
-
-  function triage(id: string, status: string) {
-    fetch('/api/candidates/' + id, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-  }
-
   return (
-    <ul>
-      {candidates.map((candidate) => (
-        <li key={candidate.id}>
-          <span>{candidate.title}</span>
-          <button type="button" onClick={() => triage(candidate.id, 'evidence')}>
-            Confirm
-          </button>
-          <button type="button" onClick={() => triage(candidate.id, 'dismissed')}>
-            Dismiss
-          </button>
-        </li>
-      ))}
-    </ul>
+    <main>
+      <section>
+        <p>
+          이 결과는 <strong>공개적으로 인덱싱된</strong> 노출만 반영합니다 (results reflect only
+          publicly-indexed exposure). 텔레그램, 비공개 포럼 등 폐쇄 플랫폼의 노출은 자동으로
+          탐지되지 않으며 별도의 수동 신고가 필요합니다.
+        </p>
+        <ul>
+          <li>
+            <a href="https://stopncii.org/" target="_blank" rel="noreferrer">
+              StopNCII.org
+            </a>
+          </li>
+          <li>
+            <a href="https://takeitdown.ncmec.org/" target="_blank" rel="noreferrer">
+              NCMEC Take It Down
+            </a>
+          </li>
+          <li>
+            <a
+              href="https://support.google.com/websearch/answer/9116649"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Google explicit-image removal
+            </a>
+          </li>
+        </ul>
+      </section>
+      <CandidateTriage params={props.params} />
+    </main>
   );
 }
