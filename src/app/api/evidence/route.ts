@@ -2,6 +2,11 @@ import prisma from '~/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+export async function GET() {
+  const rows = await prisma.candidate.findMany({ where: { status: 'evidence' } });
+  return Response.json(rows);
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
 

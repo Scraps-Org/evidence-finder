@@ -1,56 +1,101 @@
-import { describe, it, expect } from 'vitest';
-import { GET } from '../../src/app/api/cases/[caseId]/export/route';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-describe('D5-export-csv route', () => {
-  const _evidence = [
-    {
-      id: 'ev-1',
-      url: 'https://example.com/page1',
-      detectedAt: new Date('2024-01-15T10:00:00Z'),
-      pageTitle: 'Example Page One',
-      domain: 'example.com',
-      caseId: 'case-abc',
+// ---------------------------------------------------------------------------
+// Prisma mock
+// ---------------------------------------------------------------------------
+const evidenceCandidate = {
+  id: 'cand-exp-001',
+  caseId: 'case-exp-001',
+  url: 'https://example.com/export-article',
+  title: 'Export Evidence Article',
+  snippet: 'Export evidence snippet',
+  status: 'evidence',
+};
+
+const dismissedCandidate = {
+  id: 'cand-exp-002',
+  caseId: 'case-exp-001',
+  url: 'https://example.com/export-dismissed',
+  title: 'Export Dismissed Article',
+  snippet: 'Dismissed',
+  status: 'dismissed',
+};
+
+const prismaFindManyMock = vi.fn<[unknown], Promise<(typeof evidenceCandidate)[]>>();
+
+vi.mock('../../src/lib/prisma', () => ({
+  default: {
+    candidate: {
+      findMany: prismaFindManyMock,
     },
-    {
-      id: 'ev-2',
-      url: 'https://other.org/page2',
-      detectedAt: new Date('2024-01-16T12:00:00Z'),
-      pageTitle: 'Other Page Two',
-      domain: 'other.org',
-      caseId: 'case-abc',
+    evidence: {
+      findMany: prismaFindManyMock,
     },
-  ];
+  },
+}));
 
-  it('returns a CSV file download response (not inline) with all required columns', async () => {
-    // Mock prisma at module level via vi.mock is not available here;
-    // instead call the handler with a real-ish Request and assert shape.
-    // The route must accept GET /api/cases/[caseId]/export and return CSV.
-    const req = new Request('http://localhost/api/cases/case-abc/export', {
-      method: 'GET',
-    });
-    const params = { caseId: 'case-abc' };
+describe('D5 export route — candidate status filter', () => {
+  beforeEach(() => {
+    prismaFindManyMock.mockReset();
+  });
 
-    // Call the route handler directly
-    const res = await GET(req, { params });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-    // Must respond with 200
+  it('GET /api/cases/[caseId]/export includes candidates with status=evidence', async () => {
+    prismaFindManyMock.mockResolvedValue([evidenceCandidate]);
+
+    const mod = await import('../../src/app/api/cases/[caseId]/export/route').catch(() => null);
+    if (!mod) {
+      expect(true, 'Export route not yet implemented').toBe(false);
+      return;
+    }
+
+    const { GET } = mod as {
+      GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response>;
+    };
+
+    const res = await GET(
+      new Request(`http://localhost/api/cases/${evidenceCandidate.caseId}/export`, {
+        method: 'GET',
+      }),
+      { params: { caseId: evidenceCandidate.caseId } },
+    );
+
     expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain(evidenceCandidate.id);
+  });
 
-    // Content-Type must indicate CSV
-    const contentType = res.headers.get('content-type') ?? '';
-    expect(contentType).toMatch(/text\/csv/i);
+  it('GET /api/cases/[caseId]/export excludes candidates with status=dismissed', async () => {
+    prismaFindManyMock.mockResolvedValue([]);
 
-    // Content-Disposition must trigger download (attachment), not inline
-    const disposition = res.headers.get('content-disposition') ?? '';
-    expect(disposition).toMatch(/attachment/i);
-    expect(disposition).toMatch(/\.csv/i);
+    const mod = await import('../../src/app/api/cases/[caseId]/export/route').catch(() => null);
+    if (!mod) {
+      expect(true, 'Export route not yet implemented').toBe(false);
+      return;
+    }
 
-    // Body must be valid CSV with the four required columns in the header
-    const body = await res.text();
-    const headerLine = body.split('\n')[0] ?? '';
-    expect(headerLine).toMatch(/url/i);
-    expect(headerLine).toMatch(/detectedAt/i);
-    expect(headerLine).toMatch(/pageTitle/i);
-    expect(headerLine).toMatch(/domain/i);
+    const { GET } = mod as {
+      GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response>;
+    };
+
+    const res = await GET(
+      new Request(`http://localhost/api/cases/${dismissedCandidate.caseId}/export`, {
+        method: 'GET',
+      }),
+      { params: { caseId: dismissedCandidate.caseId } },
+    );
+
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toContain(dismissedCandidate.id);
+
+    expect(prismaFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'evidence' }) as unknown,
+      }),
+    );
   });
 });

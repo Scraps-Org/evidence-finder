@@ -13,28 +13,30 @@ export async function GET(req: Request, { params }: { params: Promise<{ caseId: 
   const { caseId } = await params;
 
   let rows: Array<{
+    id: string;
     url: string;
-    detectedAt: Date;
-    pageTitle: string;
-    domain: string;
+    title: string | null;
+    status: string;
+    createdAt: Date;
   }> = [];
 
   try {
-    rows = await prisma.evidence.findMany({
-      where: { caseId },
-      orderBy: { detectedAt: 'asc' },
+    rows = await prisma.candidate.findMany({
+      where: { caseId, status: 'evidence' },
+      orderBy: { createdAt: 'asc' },
     });
   } catch {
     rows = [];
   }
 
-  const header = 'url,detectedAt,pageTitle,domain';
+  const header = 'id,url,title,status,createdAt';
   const lines = rows.map((row) =>
     [
+      csvEscape(row.id),
       csvEscape(row.url),
-      csvEscape(row.detectedAt.toISOString()),
-      csvEscape(row.pageTitle),
-      csvEscape(row.domain),
+      csvEscape(row.title ?? ''),
+      csvEscape(row.status),
+      csvEscape(row.createdAt ? row.createdAt.toISOString() : ''),
     ].join(','),
   );
   const csv = [header, ...lines].join('\n');
