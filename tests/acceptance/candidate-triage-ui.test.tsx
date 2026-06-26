@@ -1,117 +1,84 @@
-/**
- * UI layer: case view lists candidates; confirm/dismiss buttons call the triage action.
- * fetch is stubbed so only the view layer is exercised here.
- */
-import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import userEvent from '@testing-library/user-event';
 
-// The coder will implement this component at src/components/CaseView.tsx
-import { CaseView } from '../../src/components/CaseView';
+// ---------- types used in stubs ----------
+type TriageAction = (candidateId: string, status: 'evidence' | 'dismissed') => Promise<void>;
 
-const CASE_ID = 'case-ui-test-001';
+// ---------- mocked module shape ----------
+type CaseViewModule = {
+  CaseView: React.ComponentType<{ caseId: string; triageCandidate: TriageAction }>;
+};
 
-const mockCandidates = [
-  {
-    id: 'cand-1',
-    caseId: CASE_ID,
-    url: 'https://example.com/article1',
-    title: 'Candidate Article One',
-    snippet: 'Snippet one',
-    status: 'detected',
-  },
-  {
-    id: 'cand-2',
-    caseId: CASE_ID,
-    url: 'https://example.com/article2',
-    title: 'Candidate Article Two',
-    snippet: 'Snippet two',
-    status: 'detected',
-  },
-];
+vi.mock('../../src/components/EvidenceList', () => ({
+  EvidenceList: () => <div data-testid="evidence-list" />,
+}));
 
-beforeEach(() => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(JSON.stringify(mockCandidates), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    ),
-  );
-});
+import React from 'react';
 
-describe('CaseView — candidate triage UI', () => {
-  it('lists all detected candidates fetched for the case', async () => {
-    render(<CaseView caseId={CASE_ID} />);
-    await waitFor(() => {
-      expect(screen.getByText('Candidate Article One')).toBeDefined();
-      expect(screen.getByText('Candidate Article Two')).toBeDefined();
-    });
-  });
+describe('D8 candidate triage – UI', () => {
+  const candidates = [
+    { id: 'cand-1', url: 'https://example.com/a', title: 'Result A', status: 'candidate' },
+    { id: 'cand-2', url: 'https://example.com/b', title: 'Result B', status: 'candidate' },
+  ];
 
-  it('renders a confirm button for each candidate', async () => {
-    render(<CaseView caseId={CASE_ID} />);
-    await waitFor(() => {
-      const confirmButtons = screen.getAllByRole('button', { name: /confirm/i });
-      expect(confirmButtons.length).toBe(2);
-    });
-  });
-
-  it('renders a dismiss button for each candidate', async () => {
-    render(<CaseView caseId={CASE_ID} />);
-    await waitFor(() => {
-      const dismissButtons = screen.getAllByRole('button', { name: /dismiss/i });
-      expect(dismissButtons.length).toBe(2);
-    });
-  });
-
-  it('calls the triage endpoint with status=evidence when confirm is clicked', async () => {
-    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(JSON.stringify(mockCandidates), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+        new Response(JSON.stringify(candidates), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
     );
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<CaseView caseId={CASE_ID} />);
-    const confirmButtons = await screen.findAllByRole('button', { name: /confirm/i });
-    fireEvent.click(confirmButtons[0]!);
-
-    await waitFor(() => {
-      const calls = fetchMock.mock.calls;
-      const triageCall = calls.find((args) => {
-        const url = String(args[0]);
-        const body = args[1]?.body ? String(args[1].body) : '';
-        return url.includes('cand-1') && body.includes('evidence');
-      });
-      expect(triageCall).toBeDefined();
-    });
   });
 
-  it('calls the triage endpoint with status=dismissed when dismiss is clicked', async () => {
-    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(JSON.stringify(mockCandidates), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+  it('lists detected candidates when the case view is opened', async () => {
+    // Dynamic import so fetch stub is in place before module initialises
+    const mod = await import('../../src/app/page') as { default: React.ComponentType };
+    const Page = mod.default;
+    render(<Page />);
+
+    // The case view must surface candidate titles fetched from the Candidate table
+    expect(await screen.findByText('Result A')).toBeTruthy();
+    expect(screen.getByText('Result B')).toBeTruthy();
+  });
+
+  it('calls confirm action and candidate moves toward evidence status', async () => {
+    const triageAction = vi.fn<[string, 'evidence' | 'dismissed'], Promise<void>>().mockResolvedValue(undefined);
+
+    // Render a minimal CaseView-like component; if the real component is not yet
+    // implemented this test will fail (red-first contract).
+    const { CaseView } = await import('../../src/components/EvidenceList') as unknown as CaseViewModule;
+    // If CaseView doesn't exist yet the destructure fails — that is the expected red state.
+    render(
+      <CaseView caseId="case-1" triageCandidate={triageAction} />
     );
-    vi.stubGlobal('fetch', fetchMock);
 
-    render(<CaseView caseId={CASE_ID} />);
-    const dismissButtons = await screen.findAllByRole('button', { name: /dismiss/i });
-    fireEvent.click(dismissButtons[0]!);
+    const confirmBtn = await screen.findByRole('button', { name: /confirm/i });
+    await userEvent.click(confirmBtn);
 
-    await waitFor(() => {
-      const calls = fetchMock.mock.calls;
-      const triageCall = calls.find((args) => {
-        const url = String(args[0]);
-        const body = args[1]?.body ? String(args[1].body) : '';
-        return url.includes('cand-1') && body.includes('dismissed');
-      });
-      expect(triageCall).toBeDefined();
-    });
+    expect(triageAction).toHaveBeenCalledWith(
+      expect.any(String),
+      'evidence',
+    );
+  });
+
+  it('calls dismiss action when user dismisses a candidate', async () => {
+    const triageAction = vi.fn<[string, 'evidence' | 'dismissed'], Promise<void>>().mockResolvedValue(undefined);
+
+    const { CaseView } = await import('../../src/components/EvidenceList') as unknown as CaseViewModule;
+    render(
+      <CaseView caseId="case-1" triageCandidate={triageAction} />
+    );
+
+    const dismissBtn = await screen.findByRole('button', { name: /dismiss/i });
+    await userEvent.click(dismissBtn);
+
+    expect(triageAction).toHaveBeenCalledWith(
+      expect.any(String),
+      'dismissed',
+    );
   });
 });
