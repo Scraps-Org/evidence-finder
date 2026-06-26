@@ -12,11 +12,10 @@ describe('Candidate persistence (acceptance)', () => {
     const unique = `acc-${Date.now()}-${Math.floor(Math.random() * 1e9)}`
     const created = await prisma.candidate.create({
       data: {
-        caseId: 'sample',
         url: unique,
         title: 'sample',
-        snippet: 'sample',
         status: 'sample',
+        caseId: 'sample',
       },
     })
     expect(created).toBeTruthy()
