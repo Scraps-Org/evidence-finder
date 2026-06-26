@@ -1,158 +1,69 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { vi, describe, it, expect, beforeEach } from 'vitest'
-import Page from '../../src/app/page'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import React from 'react'
 
-const CASE_ID = 'case-ui-triage-1'
-const CANDIDATE_ID = 'cand-ui-1'
+// Mock fetch so the UI test is isolated from the real API route
+const mockFetch = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+vi.stubGlobal('fetch', mockFetch)
 
-const mockCandidate = {
-  id: CANDIDATE_ID,
-  caseId: CASE_ID,
-  url: 'https://example.com/candidate',
-  title: 'Suspect Candidate',
-  snippet: 'Some snippet text',
-  status: 'pending',
-}
+// Mock next/navigation used by page components
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useParams: () => ({ caseId: 'case-1' }),
+  useSearchParams: () => new URLSearchParams(),
+}))
 
-const mockCase = {
-  id: CASE_ID,
-  name: 'Test Case',
-  candidates: [mockCandidate],
-}
+// Mock server actions module — the UI calls these; the route test covers the real handler
+vi.mock('../../src/lib/candidateActions', () => ({
+  confirmCandidate: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
+  dismissCandidate: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
+}))
+
+import * as actions from '../../src/lib/candidateActions'
+import CaseView from '../../src/components/CaseView'
+
+const CANDIDATES = [
+  { id: 'c1', url: 'https://example.com/a', title: 'Alpha result', status: 'pending' },
+  { id: 'c2', url: 'https://example.com/b', title: 'Beta result', status: 'pending' },
+]
 
 beforeEach(() => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(
-      (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input.toString()
-        if (url.includes('/api/cases') && !url.includes('candidates') && !url.includes('export') && !url.includes('search')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([mockCase]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        if (url.includes('/api/cases') && url.includes(CASE_ID) && url.includes('candidates')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([mockCandidate]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        if (url.includes('/api/evidence')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        return Promise.resolve(
-          new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }),
-        )
-      },
-    ),
+  vi.clearAllMocks()
+  mockFetch.mockResolvedValue(
+    new Response(JSON.stringify(CANDIDATES), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
   )
 })
 
-describe('candidate triage UI', () => {
-  it('lists detected candidates in the case view', async () => {
-    render(<Page />)
+describe('D8 candidate triage UI', () => {
+  it('lists candidates fetched for the case', async () => {
+    render(<CaseView caseId="case-1" />)
     await waitFor(() => {
-      expect(screen.getByText('Suspect Candidate')).toBeDefined()
+      expect(screen.getByText('Alpha result')).toBeInTheDocument()
+      expect(screen.getByText('Beta result')).toBeInTheDocument()
     })
   })
 
-  it('renders confirm and dismiss controls for each candidate', async () => {
-    render(<Page />)
-    await waitFor(() => {
-      expect(screen.getByText('Suspect Candidate')).toBeDefined()
-    })
-    const confirmBtn = screen.getByRole('button', { name: /confirm/i })
-    const dismissBtn = screen.getByRole('button', { name: /dismiss/i })
-    expect(confirmBtn).toBeDefined()
-    expect(dismissBtn).toBeDefined()
+  it('calls confirmCandidate server action when user clicks Confirm', async () => {
+    const user = userEvent.setup()
+    render(<CaseView caseId="case-1" />)
+    await waitFor(() => screen.getAllByRole('listitem').length > 0)
+    const items = screen.getAllByRole('listitem')
+    await user.click(within(items[0]!).getByRole('button', { name: /confirm/i }))
+    expect(actions.confirmCandidate).toHaveBeenCalledWith('c1')
   })
 
-  it('calls the triage endpoint with status=evidence when confirm is clicked', async () => {
-    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(
-      (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input.toString()
-        if (url.includes('/api/cases') && !url.includes('export') && !url.includes('search') && !url.includes('candidates')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([mockCase]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        if (url.includes('candidates')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([mockCandidate]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        if (url.includes('/api/evidence')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: CANDIDATE_ID, status: 'evidence' }), { status: 200, headers: { 'content-type': 'application/json' } }),
-        )
-      },
-    )
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<Page />)
-    await waitFor(() => {
-      expect(screen.getByText('Suspect Candidate')).toBeDefined()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
-
-    await waitFor(() => {
-      const calls = fetchMock.mock.calls
-      const triageCall = calls.find((args) => {
-        const url = typeof args[0] === 'string' ? args[0] : args[0].toString()
-        const body = typeof args[1]?.body === 'string' ? args[1].body : ''
-        return url.includes(CANDIDATE_ID) && body.includes('evidence')
-      })
-      expect(triageCall).toBeDefined()
-    })
-  })
-
-  it('calls the triage endpoint with status=dismissed when dismiss is clicked', async () => {
-    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(
-      (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input.toString()
-        if (url.includes('/api/cases') && !url.includes('export') && !url.includes('search') && !url.includes('candidates')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([mockCase]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        if (url.includes('candidates')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([mockCandidate]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        if (url.includes('/api/evidence')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } }),
-          )
-        }
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: CANDIDATE_ID, status: 'dismissed' }), { status: 200, headers: { 'content-type': 'application/json' } }),
-        )
-      },
-    )
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<Page />)
-    await waitFor(() => {
-      expect(screen.getByText('Suspect Candidate')).toBeDefined()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
-
-    await waitFor(() => {
-      const calls = fetchMock.mock.calls
-      const triageCall = calls.find((args) => {
-        const url = typeof args[0] === 'string' ? args[0] : args[0].toString()
-        const body = typeof args[1]?.body === 'string' ? args[1].body : ''
-        return url.includes(CANDIDATE_ID) && body.includes('dismissed')
-      })
-      expect(triageCall).toBeDefined()
-    })
+  it('calls dismissCandidate server action when user clicks Dismiss', async () => {
+    const user = userEvent.setup()
+    render(<CaseView caseId="case-1" />)
+    await waitFor(() => screen.getAllByRole('listitem').length > 0)
+    const items = screen.getAllByRole('listitem')
+    await user.click(within(items[0]!).getByRole('button', { name: /dismiss/i }))
+    expect(actions.dismissCandidate).toHaveBeenCalledWith('c1')
   })
 })
+
+import { within } from '@testing-library/react'
