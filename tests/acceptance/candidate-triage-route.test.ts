@@ -1,9 +1,20 @@
-import { describe, it, expect } from 'vitest';
-import { vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ---- Prisma client mock ----
-const mockUpdate = vi.fn<[unknown], Promise<{ id: string; status: string }>>().mockResolvedValue({ id: 'cand-1', status: 'evidence' });
-const mockFindMany = vi.fn<[unknown], Promise<{ id: string; status: string; url: string; title: string }[]>>().mockResolvedValue([]);
+const CASE_ID = 'case-route-triage-1'
+const CANDIDATE_ID = 'cand-route-1'
+
+const mockPrismaCandidate = {
+  id: CANDIDATE_ID,
+  caseId: CASE_ID,
+  url: 'https://example.com/route-candidate',
+  title: 'Route Candidate',
+  snippet: 'Route snippet',
+  status: 'pending',
+  createdAt: new Date(),
+}
+
+const mockUpdate = vi.fn()
+const mockFindMany = vi.fn()
 
 vi.mock('../../src/lib/prisma', () => ({
   default: {
@@ -11,125 +22,142 @@ vi.mock('../../src/lib/prisma', () => ({
       update: mockUpdate,
       findMany: mockFindMany,
     },
+    evidence: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   },
-}));
+}))
 
-// ---- Route under test ----
-// The coder must export PATCH (or POST) from this route to handle triage.
-// Adjust method name to match once implemented; the gate will pick it up.
-import * as candidatesRoute from '../../src/app/api/cases/[caseId]/candidates/route';
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
-describe('D8 candidate triage – API route', () => {
-  it('PATCH /api/cases/:caseId/candidates/:candidateId sets status to evidence', async () => {
-    mockUpdate.mockResolvedValueOnce({ id: 'cand-1', status: 'evidence' });
+describe('candidate triage route — confirm sets status to evidence', () => {
+  it('PATCH /api/cases/[caseId]/candidates/[candidateId] with status=evidence updates the Candidate row', async () => {
+    const evidenceCandidate = { ...mockPrismaCandidate, status: 'evidence' }
+    mockUpdate.mockResolvedValueOnce(evidenceCandidate)
 
-    const handler = (candidatesRoute as { PATCH?: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response> }).PATCH;
-    expect(handler, 'PATCH export must exist on the candidates route').toBeDefined();
+    const { PATCH } = await import('../../src/app/api/cases/[caseId]/candidates/[candidateId]/route')
 
-    const req = new Request('http://t/api/cases/case-1/candidates/cand-1', {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'evidence' }),
-      headers: { 'content-type': 'application/json' },
-    });
-    const res = await handler!(req, { params: { caseId: 'case-1' } });
+    const req = new Request(
+      `http://localhost/api/cases/${CASE_ID}/candidates/${CANDIDATE_ID}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'evidence' }),
+        headers: { 'content-type': 'application/json' },
+      },
+    )
 
-    expect(res.status).toBe(200);
+    const res = await PATCH(req, { params: { caseId: CASE_ID, candidateId: CANDIDATE_ID } })
+    expect(res.status).toBe(200)
+
+    const body = await res.json() as { status: string }
+    expect(body.status).toBe('evidence')
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({ id: CANDIDATE_ID }),
         data: expect.objectContaining({ status: 'evidence' }),
       }),
-    );
-  });
+    )
+  })
 
-  it('PATCH /api/cases/:caseId/candidates/:candidateId sets status to dismissed', async () => {
-    mockUpdate.mockResolvedValueOnce({ id: 'cand-1', status: 'dismissed' });
+  it('PATCH with status=dismissed updates the Candidate row to dismissed', async () => {
+    const dismissedCandidate = { ...mockPrismaCandidate, status: 'dismissed' }
+    mockUpdate.mockResolvedValueOnce(dismissedCandidate)
 
-    const handler = (candidatesRoute as { PATCH?: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response> }).PATCH;
-    expect(handler).toBeDefined();
+    const { PATCH } = await import('../../src/app/api/cases/[caseId]/candidates/[candidateId]/route')
 
-    const req = new Request('http://t/api/cases/case-1/candidates/cand-1', {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'dismissed' }),
-      headers: { 'content-type': 'application/json' },
-    });
-    const res = await handler!(req, { params: { caseId: 'case-1' } });
+    const req = new Request(
+      `http://localhost/api/cases/${CASE_ID}/candidates/${CANDIDATE_ID}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'dismissed' }),
+        headers: { 'content-type': 'application/json' },
+      },
+    )
 
-    expect(res.status).toBe(200);
+    const res = await PATCH(req, { params: { caseId: CASE_ID, candidateId: CANDIDATE_ID } })
+    expect(res.status).toBe(200)
+
+    const body = await res.json() as { status: string }
+    expect(body.status).toBe('dismissed')
+
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({ id: CANDIDATE_ID }),
         data: expect.objectContaining({ status: 'dismissed' }),
       }),
-    );
-  });
+    )
+  })
+})
 
-  it('GET /api/evidence returns only evidence-status candidates for D3 list', async () => {
-    // Import the evidence route directly — no fetch mock, tests the real handler.
-    const evidenceRoute = await import('../../src/app/api/evidence/route') as {
-      GET: (req: Request) => Promise<Response>;
-    };
+describe('evidence route — only evidence-status candidates appear', () => {
+  it('GET /api/evidence returns candidates with status=evidence and excludes dismissed ones', async () => {
+    const evidenceCandidates = [
+      { ...mockPrismaCandidate, status: 'evidence' },
+    ]
+    mockFindMany.mockResolvedValueOnce(evidenceCandidates)
 
-    const evidenceCandidate = { id: 'cand-1', status: 'evidence', url: 'https://x.com', title: 'Hit' };
-    mockFindMany.mockResolvedValueOnce([evidenceCandidate]);
+    const { GET } = await import('../../src/app/api/evidence/route')
 
-    const res = await evidenceRoute.GET(
-      new Request('http://t/api/evidence?caseId=case-1'),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json() as { id: string; status: string }[];
-    expect(Array.isArray(body)).toBe(true);
-    expect(body.some((e) => e.id === 'cand-1')).toBe(true);
-  });
+    const req = new Request('http://localhost/api/evidence', { method: 'GET' })
+    const res = await GET(req)
+    expect(res.status).toBe(200)
 
-  it('D3 evidence route does NOT include dismissed candidates', async () => {
-    const evidenceRoute = await import('../../src/app/api/evidence/route') as {
-      GET: (req: Request) => Promise<Response>;
-    };
+    const body = await res.json() as Array<{ status: string; id: string }>
+    const ids = body.map((e) => e.id)
+    expect(ids).toContain(CANDIDATE_ID)
 
-    // findMany returns empty because dismissed candidates are filtered out by the
-    // real handler (querying WHERE status = 'evidence').
-    mockFindMany.mockResolvedValueOnce([]);
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'evidence' }),
+      }),
+    )
+  })
 
-    const res = await evidenceRoute.GET(
-      new Request('http://t/api/evidence?caseId=case-1'),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json() as { id: string; status: string }[];
-    expect(body).toHaveLength(0);
-  });
+  it('dismissed candidates are NOT returned by GET /api/evidence', async () => {
+    mockFindMany.mockResolvedValueOnce([])
 
-  it('D5 export includes evidence-status candidates', async () => {
-    const exportRoute = await import('../../src/app/api/cases/[caseId]/export/route') as {
-      GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response>;
-    };
+    const { GET } = await import('../../src/app/api/evidence/route')
 
-    const evidenceCandidate = { id: 'cand-1', status: 'evidence', url: 'https://x.com', title: 'Hit' };
-    mockFindMany.mockResolvedValueOnce([evidenceCandidate]);
+    const req = new Request('http://localhost/api/evidence', { method: 'GET' })
+    const res = await GET(req)
+    expect(res.status).toBe(200)
 
-    const res = await exportRoute.GET(
-      new Request('http://t/api/cases/case-1/export'),
-      { params: { caseId: 'case-1' } },
-    );
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    // The export (CSV or JSON) must contain the evidence candidate's identifier or URL.
-    expect(text).toContain('cand-1');
-  });
+    const body = await res.json() as Array<{ id: string }>
+    const ids = body.map((e) => e.id)
+    expect(ids).not.toContain(CANDIDATE_ID)
+  })
+})
 
-  it('D5 export does NOT include dismissed candidates', async () => {
-    const exportRoute = await import('../../src/app/api/cases/[caseId]/export/route') as {
-      GET: (req: Request, ctx: { params: { caseId: string } }) => Promise<Response>;
-    };
+describe('export route — only evidence-status candidates appear in export', () => {
+  it('GET /api/cases/[caseId]/export includes evidence candidates', async () => {
+    const evidenceCandidates = [
+      { ...mockPrismaCandidate, status: 'evidence' },
+    ]
+    mockFindMany.mockResolvedValueOnce(evidenceCandidates)
 
-    // dismissed candidates filtered at DB layer — findMany returns empty.
-    mockFindMany.mockResolvedValueOnce([]);
+    const { GET } = await import('../../src/app/api/cases/[caseId]/export/route')
 
-    const res = await exportRoute.GET(
-      new Request('http://t/api/cases/case-1/export'),
-      { params: { caseId: 'case-1' } },
-    );
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(text).not.toContain('dismissed-cand');
-  });
-});
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/export`, { method: 'GET' })
+    const res = await GET(req, { params: { caseId: CASE_ID } })
+    expect(res.status).toBe(200)
+
+    const text = await res.text()
+    expect(text).toContain(CANDIDATE_ID)
+  })
+
+  it('GET /api/cases/[caseId]/export excludes dismissed candidates', async () => {
+    mockFindMany.mockResolvedValueOnce([])
+
+    const { GET } = await import('../../src/app/api/cases/[caseId]/export/route')
+
+    const req = new Request(`http://localhost/api/cases/${CASE_ID}/export`, { method: 'GET' })
+    const res = await GET(req, { params: { caseId: CASE_ID } })
+    expect(res.status).toBe(200)
+
+    const text = await res.text()
+    expect(text).not.toContain(CANDIDATE_ID)
+  })
+})
