@@ -1,60 +1,42 @@
 {
   "artifact_refs": {
     "merged_task_shas": [
-      "6411bf7a6aa03b974d09c7023dbd490375f5af6f",
-      "89acd366d8edda653ad5e9c2e3333fd477596917",
-      "9a6956f925088f33627d99c55327c99d7607bd60",
-      "391bc85d578a0fe4432e44225570a375b87ff8d4"
+      "7830f70830183e326056965db12c2228bed020c0"
     ]
   },
-  "base_ref": "46fb36a959fef4b38ea5f07e3f55bfd104786a7e",
-  "code_integration_sha": "8f640acd94b30201345b296bd3e37b2d9cb2f28b",
+  "base_ref": "35f35e234bc5818fb840457cd4b30c2a8c6c7d5d",
+  "code_integration_sha": "b8c4ebfbf13f9260c3ddd2ad35f91a46d39655d2",
   "contract_version": "1.0",
-  "correlation_id": "eval-evidence-finder-be43169ce0ed",
-  "dispatch_id": "eval-evidence-finder-be43169ce0ed-a6",
+  "correlation_id": "eval-evidence-finder-dece06c268b8",
+  "dispatch_id": "eval-evidence-finder-dece06c268b8",
   "engine_status": "engine_completed",
-  "generated_at": "2026-06-26T04:24:32.293730Z",
-  "goal_doc_sha": "be43169ce0ed",
-  "goal_id": "evidence-finder-be43169ce0ed",
-  "integration_branch": "scraps/goal/evidence-finder-be43169ce0ed",
+  "generated_at": "2026-06-26T04:48:27.465421Z",
+  "goal_doc_sha": "dece06c268b8",
+  "goal_id": "evidence-finder-dece06c268b8",
+  "integration_branch": "scraps/goal/evidence-finder-dece06c268b8",
   "known_gaps": [],
   "metrics_ref": {
     "path": "metrics.json",
-    "sha256": "2f37e19435b2f031fa354c710c5f96e9d614ca42dbf04028379ac3dc58d1f445"
+    "sha256": "2b6833f5f8ea6284d5b7890350e381d4f5899d3e7cd4f03644f634e81c96512f"
   },
   "owner_verify_result": {
     "checks": [
       {
-        "name": "candidate-triage-route",
-        "status": "green",
-        "tier": "extended"
-      },
-      {
-        "name": "case-view-page",
-        "status": "green",
-        "tier": "extended"
-      },
-      {
-        "name": "evidence-route-get",
-        "status": "green",
-        "tier": "extended"
-      },
-      {
-        "name": "export-candidate-filter",
+        "name": "recall-notice-and-referrals",
         "status": "green",
         "tier": "extended"
       }
     ],
-    "merged_task_count": 4,
+    "merged_task_count": 1,
     "submit_gate_passed": true,
     "tier": "extended"
   },
   "phase_gate_record": {},
   "recorded_acceptance_measurement": [
     {
-      "criterion": "D8-candidate-triage",
+      "criterion": "D9-recall-and-referral",
       "how_measured": "deterministic_verification",
-      "observed": "verification_evidence (tasks: candidate-triage-route, case-view-page, evidence-route-get, export-candidate-filter)"
+      "observed": "verification_evidence (tasks: recall-notice-and-referrals)"
     },
     {
       "criterion": "PKG-HEALTH",
@@ -88,35 +70,7 @@
           "status": "passed"
         },
         {
-          "command": "pnpm exec vitest run tests/acceptance/candidate-triage-route.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm run typecheck",
-          "exit_code": 0,
-          "status": "passed"
-        }
-      ],
-      "log_ref": "event:task.verification_evidence:candidate-triage-route",
-      "name": "candidate-triage-route",
-      "status": "green",
-      "tier": "extended"
-    },
-    {
-      "checks": [
-        {
-          "command": "pnpm install --frozen-lockfile",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma migrate reset --force --skip-generate --skip-seed",
+          "command": "pnpm exec vitest run tests/acceptance/recall-limit-notice.test.tsx",
           "exit_code": 0,
           "status": "passed"
         },
@@ -126,40 +80,12 @@
           "status": "passed"
         },
         {
-          "command": "pnpm run typecheck",
-          "exit_code": 0,
-          "status": "passed"
-        }
-      ],
-      "log_ref": "event:task.verification_evidence:case-view-page",
-      "name": "case-view-page",
-      "status": "green",
-      "tier": "extended"
-    },
-    {
-      "checks": [
-        {
-          "command": "pnpm install --frozen-lockfile",
+          "command": "pnpm typecheck",
           "exit_code": 0,
           "status": "passed"
         },
         {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma migrate reset --force --skip-generate --skip-seed",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/evidence-route-candidate-filter.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/evidence-route.test.ts",
+          "command": "pnpm build",
           "exit_code": 0,
           "status": "passed"
         },
@@ -169,46 +95,8 @@
           "status": "passed"
         }
       ],
-      "log_ref": "event:task.verification_evidence:evidence-route-get",
-      "name": "evidence-route-get",
-      "status": "green",
-      "tier": "extended"
-    },
-    {
-      "checks": [
-        {
-          "command": "pnpm install --frozen-lockfile",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma generate",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec prisma migrate reset --force --skip-generate --skip-seed",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/export-candidate-filter.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm exec vitest run tests/acceptance/export-csv-route.test.ts",
-          "exit_code": 0,
-          "status": "passed"
-        },
-        {
-          "command": "pnpm run typecheck",
-          "exit_code": 0,
-          "status": "passed"
-        }
-      ],
-      "log_ref": "event:task.verification_evidence:export-candidate-filter",
-      "name": "export-candidate-filter",
+      "log_ref": "event:task.verification_evidence:recall-notice-and-referrals",
+      "name": "recall-notice-and-referrals",
       "status": "green",
       "tier": "extended"
     }
