@@ -1,82 +1,192 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
+/**
+ * Acceptance: D10-case-create-ui
+ * Home page (/) renders a client component with an identifying-terms input and
+ * a submit button; submitting POSTs to /api/cases and navigates on success;
+ * empty/whitespace input is a no-op.
+ */
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 
-const mockPush = vi.fn();
-
+// ---------------------------------------------------------------------------
+// next/navigation mock — must be declared before the component import so that
+// the module registry resolves our mock when the page module is first loaded.
+// ---------------------------------------------------------------------------
+const mockPush = vi.fn()
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
-}));
+}))
 
-vi.stubGlobal(
-  'fetch',
-  vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
-);
+// Import the home page AFTER the mock is established.
+import HomePage from '../../src/app/page'
 
-const fetchMock = fetch as ReturnType<typeof vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>>;
-
-async function renderPage() {
-  const { default: Page } = await import('../../src/app/page');
-  return render(<Page />);
+// ---------------------------------------------------------------------------
+// Criterion 1 helper: verify 'use client' is declared at the top of the file.
+// ---------------------------------------------------------------------------
+function readPageSource(): string {
+  const filePath = path.resolve(__dirname, '../../src/app/page.tsx')
+  return fs.readFileSync(filePath, 'utf8')
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+describe('D10-case-create-ui: Home page case creation', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    // Stub global fetch; individual tests override the resolved value.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(),
+    )
+  })
 
-describe('D10-case-create-ui', () => {
-  it('home page file declares use client at the top', () => {
-    const filePath = path.resolve(__dirname, '../../src/app/page.tsx');
-    const src = fs.readFileSync(filePath, 'utf-8');
-    expect(src.trimStart().startsWith("'use client'")).toBe(true);
-  });
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
 
-  it('renders a text input and a submit button labeled 생성 or create', async () => {
-    await renderPage();
-    expect(screen.getByRole('textbox')).toBeDefined();
-    const button = screen.getByRole('button', { name: /생성|create/i });
-    expect(button).toBeDefined();
-  });
+  // -------------------------------------------------------------------------
+  // Criterion 1: 'use client' directive + input + button rendered
+  // -------------------------------------------------------------------------
+  it("declares 'use client' at the top of src/app/page.tsx", () => {
+    const source = readPageSource()
+    // The directive must appear before any import/code — check it's in the
+    // first non-empty line(s) of the file.
+    const firstMeaningfulLine = source
+      .split('\n')
+      .find((line) => line.trim().length > 0)
+    expect(firstMeaningfulLine?.trim()).toBe("'use client'")
+  })
 
+  it('renders an identifying-terms text input', () => {
+    render(<HomePage />)
+    const input = screen.getByRole('textbox')
+    expect(input).toBeDefined()
+  })
+
+  it("renders a submit button labelled '생성' or 'create' (case-insensitive)", () => {
+    render(<HomePage />)
+    const button = screen.getByRole('button', { name: /생성|create/i })
+    expect(button).toBeDefined()
+  })
+
+  // -------------------------------------------------------------------------
+  // Criterion 2: valid input → POST /api/cases with identifier payload
+  // -------------------------------------------------------------------------
   it('POSTs identifying terms to /api/cases on valid submit', async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: 'abc-123' }), { status: 200 })
-    );
-    await renderPage();
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '홍길동' } });
-    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/cases');
-    expect(init.method?.toUpperCase()).toBe('POST');
-    const body = JSON.parse(init.body as string) as Record<string, unknown>;
-    expect(body).toMatchObject({ terms: '홍길동' });
-  });
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'case-abc' }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
 
-  it('navigates to /cases/<newId> via useRouter().push after successful POST', async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: 'abc-123' }), { status: 200 })
-    );
-    await renderPage();
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '홍길동' } });
-    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }));
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/cases/abc-123'));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
+    render(<HomePage />)
 
-  it('does not POST or navigate when input is empty', async () => {
-    await renderPage();
-    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }));
-    await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
-    expect(mockPush).not.toHaveBeenCalled();
-  });
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: '피의자 홍길동' } })
+    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }))
 
-  it('does not POST or navigate when input is whitespace only', async () => {
-    await renderPage();
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } });
-    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }));
-    await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
-    expect(mockPush).not.toHaveBeenCalled();
-  });
-});
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(String(url)).toContain('/api/cases')
+    expect((init as RequestInit).method?.toUpperCase()).toBe('POST')
+
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>
+    // The payload must contain the entered terms under some identifying key.
+    const values = Object.values(body)
+    expect(values.some((v) => typeof v === 'string' && v.includes('피의자 홍길동'))).toBe(true)
+  })
+
+  // -------------------------------------------------------------------------
+  // Criterion 3: on success → useRouter().push('/cases/<newId>')
+  // -------------------------------------------------------------------------
+  it('navigates to /cases/<newId> via useRouter().push on successful POST', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'case-xyz' }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HomePage />)
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '식별어' } })
+    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }))
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledOnce()
+    })
+
+    expect(mockPush).toHaveBeenCalledWith('/cases/case-xyz')
+  })
+
+  it('does NOT use window.location for navigation', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'case-loc' }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const locationAssignSpy = vi.fn()
+    const locationHrefSpy = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...window.location,
+        assign: locationAssignSpy,
+        replace: locationAssignSpy,
+        get href() { return '' },
+        set href(_v: string) { locationHrefSpy(_v) },
+      },
+    })
+
+    render(<HomePage />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '식별어' } })
+    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }))
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledOnce()
+    })
+
+    expect(locationAssignSpy).not.toHaveBeenCalled()
+    expect(locationHrefSpy).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // Criterion 4: empty / whitespace-only input → no POST, no navigation
+  // -------------------------------------------------------------------------
+  it('does NOT POST or navigate when input is empty', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HomePage />)
+    // Input left empty
+    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }))
+
+    // Allow a tick for any async side-effects.
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('does NOT POST or navigate when input contains only whitespace', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HomePage />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '   \t  ' } })
+    fireEvent.click(screen.getByRole('button', { name: /생성|create/i }))
+
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+})
