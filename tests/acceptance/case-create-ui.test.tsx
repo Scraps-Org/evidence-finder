@@ -9,10 +9,10 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
-describe('D10-case-create-ui: home page case creation', () => {
+describe('D10-case-create-ui — home page case creation', () => {
   beforeEach(() => {
-    mockPush.mockReset();
-    vi.stubGlobal('fetch', vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>());
+    mockPush.mockClear();
+    vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
@@ -27,49 +27,54 @@ describe('D10-case-create-ui: home page case creation', () => {
     expect(btn).toBeDefined();
   });
 
-  it('POSTs identifying terms to /api/cases on valid submission', async () => {
-    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(JSON.stringify({ id: 'case-abc' }), {
-        status: 201,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+  it('POSTs to /api/cases with the identifying terms on valid submit', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ id: 'case-42' }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     render(<Page />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '홍길동 사기' },
+    });
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '홍길동' } });
     const btn = screen.queryByRole('button', { name: /생성/i })
       ?? screen.getByRole('button', { name: /create/i });
     fireEvent.click(btn);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    const [url, init] = fetchMock.mock.calls[0]!;
+    const [url, opts] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain('/api/cases');
-    expect((init as RequestInit).method?.toUpperCase()).toBe('POST');
-    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
-    expect(Object.values(body).join('')).toContain('홍길동');
+    expect((opts as RequestInit).method?.toUpperCase()).toBe('POST');
+    const body = JSON.parse((opts as RequestInit).body as string) as Record<string, unknown>;
+    expect(Object.values(body).some((v) => String(v).includes('홍길동 사기'))).toBe(true);
   });
 
-  it('navigates to /cases/<newId> via useRouter().push on success', async () => {
-    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(JSON.stringify({ id: 'case-xyz' }), {
-        status: 201,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+  it('navigates to /cases/<newId> via router.push on success — not window.location', async () => {
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ id: 'case-99' }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     render(<Page />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '테스트 식별어' },
+    });
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '김철수' } });
     const btn = screen.queryByRole('button', { name: /생성/i })
       ?? screen.getByRole('button', { name: /create/i });
     fireEvent.click(btn);
 
-    await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(1));
-    expect(mockPush.mock.calls[0]![0]).toBe('/cases/case-xyz');
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/cases/case-99'));
   });
 
   it('does not POST or navigate when input is empty', async () => {
@@ -92,8 +97,10 @@ describe('D10-case-create-ui: home page case creation', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<Page />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '   ' },
+    });
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } });
     const btn = screen.queryByRole('button', { name: /생성/i })
       ?? screen.getByRole('button', { name: /create/i });
     fireEvent.click(btn);
