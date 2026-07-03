@@ -1,100 +1,116 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-const mockCreate = vi.fn();
-const mockPrisma = { evidence: { create: mockCreate } };
+// Mock prisma before importing the route
+const mockCreate = vi.fn()
+vi.mock('../../src/lib/prisma', () => ({
+  default: { evidence: { create: mockCreate } },
+}))
 
-vi.mock('../../src/lib/prisma', () => ({ default: mockPrisma }));
+// Mock fetch so the route does a server-side HTTP fetch to extract metadata
+const mockFetch = vi.fn()
+vi.stubGlobal('fetch', mockFetch)
 
-describe('POST /api/evidence — server-side fetch, parse, and persist', () => {
+describe('POST /api/evidence — URL add route', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-    mockCreate.mockReset();
-  });
+    vi.clearAllMocks()
+  })
 
-  it('creates an Evidence row with all five fields non-null when a URL is submitted', async () => {
-    const targetUrl = 'https://example.com/post/123';
-    const fakeHtml = '<html><head><title>Evidence Page Title</title></head><body></body></html>';
+  it('creates an Evidence row with all five non-null fields when a URL is submitted', async () => {
+    const targetUrl = 'https://example.com/exposure-post'
+    const caseId = 'case-abc-123'
 
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(fakeHtml, { status: 200, headers: { 'content-type': 'text/html' } }),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
+    // The route must fetch the target URL server-side to extract metadata
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        '<html><head><title>Exposure Post Title</title></head><body></body></html>',
+    })
 
-    const caseId = 'case-abc-123';
-    mockCreate.mockResolvedValue({
+    const storedAt = new Date()
+    mockCreate.mockResolvedValueOnce({
       id: 'ev-1',
       url: targetUrl,
-      detectedAt: new Date(),
-      pageTitle: 'Evidence Page Title',
+      pageTitle: 'Exposure Post Title',
       domain: 'example.com',
+      detectedAt: storedAt,
       caseId,
-    });
+    })
 
-    const { POST } = await import('../../src/app/api/evidence/route');
+    const { POST } = await import('../../src/app/api/evidence/route')
 
     const req = new Request('http://localhost/api/evidence', {
       method: 'POST',
-      body: JSON.stringify({ url: targetUrl, caseId }),
       headers: { 'content-type': 'application/json' },
-    });
+      body: JSON.stringify({ url: targetUrl, caseId }),
+    })
 
-    const res = await POST(req);
-    expect(res.status).toBe(201);
+    const res = await POST(req)
+    expect(res.status).toBe(201)
 
-    const body = await res.json() as { url: string; detectedAt: string; pageTitle: string; domain: string; caseId: string };
-    expect(body.url).toBe(targetUrl);
-    expect(body.detectedAt).toBeTruthy();
-    expect(body.pageTitle).toBeTruthy();
-    expect(body.domain).toBeTruthy();
-    expect(body.caseId).toBe(caseId);
-  });
+    const body = await res.json() as {
+      id: string
+      url: string
+      pageTitle: string
+      domain: string
+      detectedAt: string
+      caseId: string
+    }
 
-  it('fetches the target URL on the server (not the client) and extracts pageTitle from <title>', async () => {
-    const targetUrl = 'https://news.example.org/article/456';
-    const fakeHtml = '<html><head><title>Parsed From Server</title></head></html>';
+    // All five required fields must be non-null in the response
+    expect(body.url).toBe(targetUrl)
+    expect(body.pageTitle).toBeTruthy()
+    expect(body.domain).toBeTruthy()
+    expect(body.detectedAt).toBeTruthy()
+    expect(body.caseId).toBe(caseId)
+  })
 
-    const fetchSpy = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>().mockResolvedValue(
-      new Response(fakeHtml, { status: 200 }),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
+  it('performs a server-side fetch of the target URL to extract pageTitle and domain', async () => {
+    const targetUrl = 'https://badsite.net/page/123'
+    const caseId = 'case-xyz-456'
 
-    const caseId = 'case-xyz-999';
-    mockCreate.mockResolvedValue({
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        '<html><head><title>Bad Site Page</title></head><body></body></html>',
+    })
+
+    mockCreate.mockResolvedValueOnce({
       id: 'ev-2',
       url: targetUrl,
+      pageTitle: 'Bad Site Page',
+      domain: 'badsite.net',
       detectedAt: new Date(),
-      pageTitle: 'Parsed From Server',
-      domain: 'news.example.org',
       caseId,
-    });
+    })
 
-    const { POST } = await import('../../src/app/api/evidence/route');
+    const { POST } = await import('../../src/app/api/evidence/route')
 
     const req = new Request('http://localhost/api/evidence', {
       method: 'POST',
-      body: JSON.stringify({ url: targetUrl, caseId }),
       headers: { 'content-type': 'application/json' },
-    });
+      body: JSON.stringify({ url: targetUrl, caseId }),
+    })
 
-    await POST(req);
+    await POST(req)
 
-    // The route must have fetched the target URL (server-side)
-    expect(fetchSpy).toHaveBeenCalledWith(
-      targetUrl,
-      expect.objectContaining({}),
-    );
+    // The route must have called fetch with the exact target URL (server-side scrape)
+    expect(mockFetch).toHaveBeenCalledWith(targetUrl)
 
-    // Prisma create must have been called with pageTitle from <title> and domain derived from URL
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          url: targetUrl,
-          pageTitle: 'Parsed From Server',
-          domain: 'news.example.org',
-          caseId,
-          detectedAt: expect.any(Date),
-        }),
-      }),
-    );
-  });
-});
+    // The prisma create call must receive pageTitle parsed from <title>, domain from URL, and a timestamp
+    const createCall = mockCreate.mock.calls[0] as [{
+      data: {
+        url: string
+        pageTitle: string
+        domain: string
+        detectedAt: Date
+        caseId: string
+      }
+    }]
+    const data = createCall[0].data
+    expect(data.pageTitle).toBe('Bad Site Page')
+    expect(data.domain).toBe('badsite.net')
+    expect(data.detectedAt).toBeInstanceOf(Date)
+    expect(data.url).toBe(targetUrl)
+    expect(data.caseId).toBe(caseId)
+  })
+})
