@@ -14,9 +14,9 @@ describe('Evidence persistence (acceptance)', () => {
     const created = await prisma.evidence.create({
       data: {
         url: unique,
-        detectedAt: new Date(),
         pageTitle: 'sample',
         domain: 'sample',
+        detectedAt: new Date(),
         caseId: caseIdParent.id,
       },
     })
