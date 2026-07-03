@@ -1,74 +1,83 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
-import EvidenceList from '../../src/components/EvidenceList';
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import EvidenceList from '../../src/components/EvidenceList'
 
-// Minimal Evidence shape the component needs
-const sampleEvidence = [
-  {
-    id: 'ev-1',
-    url: 'https://evil.example.com/leak/photo.jpg',
-    pageTitle: 'Leaked Photo — Evil Site',
-    domain: 'evil.example.com',
-    detectedAt: new Date('2026-07-01T10:00:00Z'),
-    caseId: 'case-1',
-  },
-  {
-    id: 'ev-2',
-    url: 'https://bad.example.org/vid.mp4',
-    pageTitle: 'Video Post',
-    domain: 'bad.example.org',
-    detectedAt: new Date('2026-07-02T12:00:00Z'),
-    caseId: 'case-1',
-  },
-];
+describe('EvidenceList — no media elements pointing at detected URLs', () => {
+  const DETECTED_URL = 'https://exposure-site.example.com/leaked/post'
 
-describe('EvidenceList UI — metadata-only rendering, no media src leak', () => {
-  it('renders url text, pageTitle, domain, and detectedAt for each evidence item', () => {
-    render(<EvidenceList evidence={sampleEvidence} />);
+  const sampleEvidence = [
+    {
+      id: 'ev-1',
+      url: DETECTED_URL,
+      pageTitle: 'Leaked Content - ExposureSite',
+      domain: 'exposure-site.example.com',
+      detectedAt: new Date('2026-07-03T10:00:00Z').toISOString(),
+      caseId: 'case-abc',
+    },
+    {
+      id: 'ev-2',
+      url: 'https://another-site.example.net/post/456',
+      pageTitle: 'Another Exposure Post',
+      domain: 'another-site.example.net',
+      detectedAt: new Date('2026-07-03T11:00:00Z').toISOString(),
+      caseId: 'case-abc',
+    },
+  ]
 
-    // Both items must surface their metadata as visible text
-    expect(screen.getByText(/evil\.example\.com\/leak\/photo\.jpg/)).toBeDefined();
-    expect(screen.getByText(/Leaked Photo/)).toBeDefined();
-    expect(screen.getByText(/evil\.example\.com/)).toBeDefined();
+  it('renders URL text, pageTitle, domain, and detectedAt for each evidence item', () => {
+    render(<EvidenceList evidence={sampleEvidence} />)
 
-    expect(screen.getByText(/bad\.example\.org\/vid\.mp4/)).toBeDefined();
-    expect(screen.getByText(/Video Post/)).toBeDefined();
-    expect(screen.getByText(/bad\.example\.org/)).toBeDefined();
-  });
+    expect(screen.getByText(DETECTED_URL)).toBeInTheDocument()
+    expect(screen.getByText('Leaked Content - ExposureSite')).toBeInTheDocument()
+    expect(screen.getByText('exposure-site.example.com')).toBeInTheDocument()
 
-  it('does NOT render any <img> element whose src references a detected URL', () => {
-    const { container } = render(<EvidenceList evidence={sampleEvidence} />);
+    expect(screen.getByText('https://another-site.example.net/post/456')).toBeInTheDocument()
+    expect(screen.getByText('Another Exposure Post')).toBeInTheDocument()
+    expect(screen.getByText('another-site.example.net')).toBeInTheDocument()
+  })
 
-    const imgs = container.querySelectorAll('img');
-    const leakingImg = Array.from(imgs).find(
-      (img) => sampleEvidence.some((ev) => img.getAttribute('src') === ev.url)
-    );
-    expect(
-      leakingImg,
-      '<img> with src pointing at a detected evidence URL must not exist'
-    ).toBeUndefined();
-  });
+  it('does not render any <img> element whose src is a detected URL', () => {
+    const { container } = render(<EvidenceList evidence={sampleEvidence} />)
 
-  it('does NOT render any <video> element whose src references a detected URL', () => {
-    const { container } = render(<EvidenceList evidence={sampleEvidence} />);
+    const imgs = container.querySelectorAll('img')
+    const detectedUrls = sampleEvidence.map((e) => e.url)
 
-    const videos = container.querySelectorAll('video');
-    const leakingVideo = Array.from(videos).find(
-      (vid) => sampleEvidence.some((ev) => vid.getAttribute('src') === ev.url)
-    );
-    expect(
-      leakingVideo,
-      '<video> with src pointing at a detected evidence URL must not exist'
-    ).toBeUndefined();
+    imgs.forEach((img) => {
+      const src = img.getAttribute('src') ?? ''
+      expect(
+        detectedUrls.includes(src),
+        `<img src="${src}"> must not point at a detected evidence URL`
+      ).toBe(false)
+    })
+  })
 
-    // Also check <source> children inside <video>
-    const sources = container.querySelectorAll('video source');
-    const leakingSource = Array.from(sources).find(
-      (src) => sampleEvidence.some((ev) => src.getAttribute('src') === ev.url)
-    );
-    expect(
-      leakingSource,
-      '<source> inside <video> pointing at a detected evidence URL must not exist'
-    ).toBeUndefined();
-  });
-});
+  it('does not render any <video> element whose src is a detected URL', () => {
+    const { container } = render(<EvidenceList evidence={sampleEvidence} />)
+
+    const videos = container.querySelectorAll('video')
+    const detectedUrls = sampleEvidence.map((e) => e.url)
+
+    videos.forEach((video) => {
+      const src = video.getAttribute('src') ?? ''
+      expect(
+        detectedUrls.includes(src),
+        `<video src="${src}"> must not point at a detected evidence URL`
+      ).toBe(false)
+    })
+  })
+
+  it('does not render any <source> element inside <video> pointing at a detected URL', () => {
+    const { container } = render(<EvidenceList evidence={sampleEvidence} />)
+
+    const sources = container.querySelectorAll('video source')
+    const detectedUrls = sampleEvidence.map((e) => e.url)
+
+    sources.forEach((source) => {
+      const src = source.getAttribute('src') ?? ''
+      expect(
+        detectedUrls.includes(src),
+        `<source src="${src}"> inside <video> must not point at a detected evidence URL`
+      ).toBe(false)
+    })
+  })
+})
