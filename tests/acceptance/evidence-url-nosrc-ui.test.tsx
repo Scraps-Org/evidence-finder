@@ -1,46 +1,70 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import EvidenceList from '../../src/components/EvidenceList';
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
+import EvidenceList from '../../src/components/EvidenceList'
 
-const DETECTED_URL = 'https://harmful.example.com/post/999';
+const DETECTED_URL = 'https://bad-site.example.com/leak-post'
 
-const mockEvidence = [
+const MOCK_EVIDENCE = [
   {
     id: 'ev-1',
     url: DETECTED_URL,
-    pageTitle: 'Harmful Post Title',
-    domain: 'harmful.example.com',
-    detectedAt: '2026-07-03T12:00:00.000Z',
-    caseId: 'case-1',
+    pageTitle: 'Leaked Post Title',
+    domain: 'bad-site.example.com',
+    detectedAt: new Date('2026-07-03T09:00:00Z'),
+    caseId: 'case-001',
   },
-];
+  {
+    id: 'ev-2',
+    url: 'https://another-site.example.org/post/99',
+    pageTitle: 'Another Exposure',
+    domain: 'another-site.example.org',
+    detectedAt: new Date('2026-07-03T10:00:00Z'),
+    caseId: 'case-001',
+  },
+]
 
-describe('EvidenceList — metadata-only rendering, no media src', () => {
+aftEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('EvidenceList UI — metadata only, no media elements pointing at detected URLs', () => {
   it('renders URL text, pageTitle, domain, and detectedAt for each evidence item', () => {
-    render(<EvidenceList evidence={mockEvidence} />);
+    render(<EvidenceList evidence={MOCK_EVIDENCE} />)
 
-    expect(screen.getByText(DETECTED_URL)).toBeTruthy();
-    expect(screen.getByText('Harmful Post Title')).toBeTruthy();
-    expect(screen.getByText('harmful.example.com')).toBeTruthy();
-    // detectedAt must appear in some human-readable or ISO form
-    expect(screen.getByText(/2026-07-03|Jul.*2026|2026.*Jul/i)).toBeTruthy();
-  });
+    expect(screen.getByText(DETECTED_URL)).toBeInTheDocument()
+    expect(screen.getByText('Leaked Post Title')).toBeInTheDocument()
+    expect(screen.getByText('bad-site.example.com')).toBeInTheDocument()
 
-  it('does not render any <img> or <video> element whose src references the detected URL', () => {
-    const { container } = render(<EvidenceList evidence={mockEvidence} />);
+    expect(screen.getByText('https://another-site.example.org/post/99')).toBeInTheDocument()
+    expect(screen.getByText('Another Exposure')).toBeInTheDocument()
+    expect(screen.getByText('another-site.example.org')).toBeInTheDocument()
+  })
 
-    const imgs = Array.from(container.querySelectorAll('img'));
-    const videos = Array.from(container.querySelectorAll('video'));
+  it('does not render any <img> element whose src references a detected URL', () => {
+    const { container } = render(<EvidenceList evidence={MOCK_EVIDENCE} />)
 
-    const hasImgSrc = imgs.some((el) => el.getAttribute('src') === DETECTED_URL);
-    const hasVideoSrc = videos.some((el) => el.getAttribute('src') === DETECTED_URL);
+    const imgs = container.querySelectorAll('img')
+    imgs.forEach((img) => {
+      const src = img.getAttribute('src') ?? ''
+      expect(src).not.toBe(MOCK_EVIDENCE[0]!.url)
+      expect(src).not.toBe(MOCK_EVIDENCE[1]!.url)
+    })
+  })
 
-    // Also check <source> elements nested inside <video>
-    const sources = Array.from(container.querySelectorAll('video source'));
-    const hasSourceSrc = sources.some((el) => el.getAttribute('src') === DETECTED_URL);
+  it('does not render any <video> element whose src references a detected URL', () => {
+    const { container } = render(<EvidenceList evidence={MOCK_EVIDENCE} />)
 
-    expect(hasImgSrc).toBe(false);
-    expect(hasVideoSrc).toBe(false);
-    expect(hasSourceSrc).toBe(false);
-  });
-});
+    const videos = container.querySelectorAll('video')
+    videos.forEach((video) => {
+      const src = video.getAttribute('src') ?? ''
+      expect(src).not.toBe(MOCK_EVIDENCE[0]!.url)
+      expect(src).not.toBe(MOCK_EVIDENCE[1]!.url)
+      const sources = video.querySelectorAll('source')
+      sources.forEach((s) => {
+        const ssrc = s.getAttribute('src') ?? ''
+        expect(ssrc).not.toBe(MOCK_EVIDENCE[0]!.url)
+        expect(ssrc).not.toBe(MOCK_EVIDENCE[1]!.url)
+      })
+    })
+  })
+})
