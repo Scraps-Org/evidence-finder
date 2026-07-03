@@ -1,80 +1,65 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
-import EvidenceList from '../../src/components/EvidenceList'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import React from 'react'
 
-const sampleEvidence = [
-  {
-    id: 'ev-1',
-    url: 'https://harmful.example.com/leak/1',
-    pageTitle: 'Leaked Page One',
-    domain: 'harmful.example.com',
-    detectedAt: new Date('2026-07-03T09:00:00Z').toISOString(),
-    caseId: 'case-1',
-  },
-  {
-    id: 'ev-2',
-    url: 'https://another-bad-site.net/post/99',
-    pageTitle: 'Another Exposure Post',
-    domain: 'another-bad-site.net',
-    detectedAt: new Date('2026-07-03T10:00:00Z').toISOString(),
-    caseId: 'case-1',
-  },
-]
+// EvidenceList receives a list of evidence items and renders metadata only.
+// It must NEVER render <img> or <video> elements whose src points at detected URLs.
 
-describe('EvidenceList — metadata-only rendering, no media src pointing at detected URLs', () => {
-  it('renders the URL text, pageTitle, domain, and detectedAt for each evidence item', () => {
-    render(<EvidenceList evidence={sampleEvidence} />)
+vi.mock('../../src/lib/prisma', () => ({
+  default: {},
+}))
 
-    for (const ev of sampleEvidence) {
-      expect(screen.getByText(ev.url)).toBeInTheDocument()
-      expect(screen.getByText(ev.pageTitle)).toBeInTheDocument()
-      expect(screen.getByText(ev.domain)).toBeInTheDocument()
-    }
-  })
+describe('EvidenceList — no media elements pointing at detected URLs', () => {
+  it('renders URL text, pageTitle, domain, and detectedAt without any <img> or <video> src referencing the evidence URL', async () => {
+    const { EvidenceList } = await import('../../src/components/EvidenceList')
 
-  it('does not render any <img> element whose src is a detected evidence URL', () => {
-    const { container } = render(<EvidenceList evidence={sampleEvidence} />)
+    const items = [
+      {
+        id: 'ev-1',
+        url: 'https://harmful.example.com/post/99',
+        pageTitle: 'Harmful Post',
+        domain: 'harmful.example.com',
+        detectedAt: new Date('2026-06-01T10:00:00Z'),
+        caseId: 'case-1',
+      },
+      {
+        id: 'ev-2',
+        url: 'https://another.bad.site/img/42',
+        pageTitle: 'Another Bad Site',
+        domain: 'another.bad.site',
+        detectedAt: new Date('2026-06-02T12:00:00Z'),
+        caseId: 'case-1',
+      },
+    ]
 
+    const { container } = render(<EvidenceList items={items} />)
+
+    // Metadata must be visible
+    expect(screen.getByText('https://harmful.example.com/post/99')).toBeTruthy()
+    expect(screen.getByText('Harmful Post')).toBeTruthy()
+    expect(screen.getByText('harmful.example.com')).toBeTruthy()
+
+    expect(screen.getByText('https://another.bad.site/img/42')).toBeTruthy()
+    expect(screen.getByText('Another Bad Site')).toBeTruthy()
+    expect(screen.getByText('another.bad.site')).toBeTruthy()
+
+    // No <img> element may have a src that matches any of the detected URLs
     const imgs = container.querySelectorAll('img')
-    const detectedUrls = new Set(sampleEvidence.map((e) => e.url))
+    const videos = container.querySelectorAll('video')
+    const sources = container.querySelectorAll('source')
+
+    const detectedUrls = items.map((i) => i.url)
 
     imgs.forEach((img) => {
-      expect(detectedUrls.has(img.getAttribute('src') ?? '')).toBe(false)
+      expect(detectedUrls).not.toContain(img.getAttribute('src'))
     })
-  })
-
-  it('does not render any <video> element whose src is a detected evidence URL', () => {
-    const { container } = render(<EvidenceList evidence={sampleEvidence} />)
-
-    const videos = container.querySelectorAll('video')
-    const detectedUrls = new Set(sampleEvidence.map((e) => e.url))
 
     videos.forEach((video) => {
-      expect(detectedUrls.has(video.getAttribute('src') ?? '')).toBe(false)
+      expect(detectedUrls).not.toContain(video.getAttribute('src'))
     })
-  })
-
-  it('does not render any <source> element inside a <video> whose src is a detected evidence URL', () => {
-    const { container } = render(<EvidenceList evidence={sampleEvidence} />)
-
-    const sources = Array.from(container.querySelectorAll('video source'))
-    const detectedUrls = new Set(sampleEvidence.map((e) => e.url))
 
     sources.forEach((source) => {
-      expect(detectedUrls.has(source.getAttribute('src') ?? '')).toBe(false)
-    })
-  })
-
-  it('contains no <img> or <video> elements at all when only evidence metadata is expected', () => {
-    const { container } = render(<EvidenceList evidence={sampleEvidence} />)
-
-    // The list is metadata-only: zero img/video nodes is the correct outcome
-    const mediaNodes = container.querySelectorAll('img, video')
-    mediaNodes.forEach((node) => {
-      const src = node.getAttribute('src') ?? ''
-      // Any media element that points to a detected URL is a violation
-      const detectedUrls = sampleEvidence.map((e) => e.url)
-      expect(detectedUrls).not.toContain(src)
+      expect(detectedUrls).not.toContain(source.getAttribute('src'))
     })
   })
 })
