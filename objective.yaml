@@ -1,0 +1,108 @@
+# North-star objective — the multi-goal target the continuous loop converges toward (Phase 5).
+#
+# `/lean-objective-cycle evidence-finder` reads this each cycle and does two things:
+#   1. judges the most-recently-shipped product increment vs `success_dimensions`
+#      → writes `product_verdict` (pass/block/inconclusive) to the matching Build Cycles row,
+#   2. sequences the NEXT goal — picks the top still-pending dimension, hands it off via
+#      strategy-push (LEAN-STRATEGY.md objective/acceptance/dimension_id) so the allocator dispatches it.
+# Convergence = every dimension met → no new goal; the objective is satisfied.
+#
+# This file is lean-owned and an IMMUTABLE roadmap (definition + signal only). The loop reads it.
+# Per-dimension met/pending is NOT stored here — it is derived from Build Cycles `product_verdict`
+# by `dimension_id` (SCR-606): a dimension is met when its latest conclusive cycle verdict is `pass`.
+# A single "goal" (one loop iteration) is DERIVED from one pending dimension — not stored here.
+#
+# Authored via /lean-objective-draft co-author (SCR-611 단계 1, 2026-06-20) — first lean-synthesized
+# objective. Evidence: founder intake (validated bet + capabilities + deploy constraints) + a research
+# pass on NCII URL-detection feasibility. Lessons: L-005, L-006.
+
+product: evidence-finder
+repo: Scraps-Org/evidence-finder
+build_cycles_product: evidence-finder
+
+objective: >
+  A web service that helps a victim of non-consensual intimate-image (NCII)
+  distribution locate the URLs of posts exposing them and compile each into a
+  report-ready evidence package — URL, detection timestamp, page title/domain —
+  exportable as CSV for KCSC (방심위) review, takedown requests, and injunctions.
+  The service is URL/metadata-centric: the distributed content itself is never
+  stored on the server and never shown by default, so the victim does not have to
+  re-view it. Detection is a best-effort surfacer of publicly-indexed exposure
+  feeding a human-triage workflow — not an exhaustive scanner. Runs on a Vercel
+  deploy that stays green, backed by Vercel Postgres holding only identifiers,
+  detected URLs, page metadata, and processing status.
+
+# Each dimension is ONE thin vertical slice (SCR-568): a single user-visible
+# capability, integration-light (~≤3 tasks), independently shippable+verifiable.
+# Ordered so integration difficulty steps up one notch per slice. The local coder
+# handles per-file code but stumbles on multi-component wiring, so each slice is
+# kept to one route + one client + one assertion, and each signal NAMES its stack/
+# integration (checkability ≠ executability — lesson L-006).
+#
+# Shape: D1–D5 = a complete, shippable MANUAL evidence spine (no external search).
+# D6–D9 = automated text detection, split fine (adapter → live source → triage →
+# honest recall/referral). The core value (detection) is also the hardest/most-
+# uncertain slice (search recall over NCII content), so the verifiable manual core
+# ships first and detection lands last — bet priority ≠ build order (L-005).
+success_dimensions:
+  - id: D1-scaffold
+    statement: The app is the evidence-finder product (renamed) with a static landing page describing the service.
+    signal: package.json name is "evidence-finder" (no create-next-app/template remnants) and the home page renders a heading describing the service (contains "증거" or "evidence"); next build + tsc --noEmit pass.
+
+  - id: D2-case-input
+    statement: A user can enter the identifying terms (their name/identifier) to search on, saved as a case.
+    signal: A Next.js API route persists submitted identifying terms as a row in a Prisma `Case` model (with an `identifyingTerms` text column) on Vercel Postgres; a single prisma/migrations/ migration creates the Case table; the saved case is then read back and listed; empty or whitespace-only input is rejected without a row. next build and tsc --noEmit both pass.
+
+  - id: D3-manual-evidence
+    statement: A user can manually add a URL and have it organized into an evidence item (content not shown).
+    signal: Adding a URL to a case creates a Prisma `Evidence` row {url, detectedAt, pageTitle, domain, caseId}; a server route fetches the page to extract <title> + domain and stamps detectedAt; the evidence list renders URL + metadata only. The distributed media is NOT rendered (no <img>/<video> pointing at the detected URL). build + tsc pass.
+
+  - id: D4-content-shielded
+    statement: The evidence list shows only URL + metadata by default; content appears only on an explicit per-item reveal.
+    signal: In the default render no media/thumbnail is auto-loaded; each evidence item has an explicit "확인" (reveal) control the user must activate to view content; until activated only URL/metadata is shown. build + tsc pass.
+
+  - id: D5-export-csv
+    statement: A user can export a case's evidence package as CSV.
+    signal: "An export control generates a downloadable CSV containing, per evidence row: url, detectedAt, pageTitle, domain. build + tsc pass."
+
+  - id: D6-source-adapter
+    statement: A typed search-source contract exists with an offline fixture source (no network).
+    signal: "A `SearchSource` interface with `query(terms): SearchResult[]` and `SearchResult{url,title,snippet,source,foundAt}` plus an in-memory fixture impl; a unit test (pnpm test) is green showing the fixture returns ≥1 typed result. No network call. build + tsc pass."
+
+  - id: D7-text-search-brave
+    statement: A user can run a case's terms through a live web search and get candidate URLs.
+    signal: A `BraveSource` implements SearchSource via the Brave Search API (token from env, 15s timeout); an API route runs a case's terms through it and upserts results into a Prisma `Candidate` table (url unique per case, status "new", dedup so the same url inserts once); the call returns ≥1 normalized candidate. build + tsc pass.
+
+  - id: D8-candidate-triage
+    statement: A user can confirm or dismiss detected candidates, promoting confirmed ones to evidence.
+    signal: The case view lists candidates; a server action sets a candidate status to "evidence" (it then appears in the D3 evidence list + D5 export) or "dismissed" (it does not); status persists in the Candidate table. build + tsc pass.
+
+  - id: D9-recall-and-referral
+    statement: The user sees an honest recall-limit notice and referral links to takedown channels.
+    signal: The detection view renders a static notice that search surfaces only publicly-indexed exposure (closed platforms like Telegram/forums need manual reporting), and renders referral links to StopNCII.org, NCMEC Take It Down, and Google's explicit-image removal as downstream takedown actions (links only — not scanners). build + tsc pass.
+
+  - id: D10-case-create-ui
+    statement: A user can create a case directly from the home page by entering identifying terms and pressing a button, then lands on that case's view.
+    signal: The home page (/) renders a client component with an identifying-terms text input and a submit button (labeled "생성"/"create"); submitting POSTs the terms to the existing /api/cases route and on success navigates to /cases/<newId> via the Next.js router (useRouter().push). Empty or whitespace-only input does not create a case and does not navigate. build + tsc pass.
+
+  - id: D11-full-ui-operations
+    statement: A user can perform every case operation — run search, add a manual evidence URL, and export CSV — from the case view via on-screen buttons, so the whole workflow is usable in the browser with no manual API calls.
+    signal: The case view (/cases/<id>) renders client-component controls wired to the EXISTING routes — a search button that POSTs /api/cases/<id>/search and shows the returned candidates, an add-evidence input + button that POSTs /api/evidence with the case's url, and an export button that downloads the CSV via GET /api/cases/<id>/export. Each control invokes its route and reflects the outcome in the UI (new candidates appear, added evidence appears, CSV downloads). build + tsc pass.
+
+constraints:
+  - Next.js app must build and tsc --noEmit must pass (PKG-HEALTH gate); Vercel deploy stays green.
+  - Persistence = Vercel Postgres via Prisma. The database stores ONLY identifying terms, candidate/evidence URLs, page metadata, and processing status — the distributed content (image/video) itself is never stored server-side.
+  - Content is hidden by default (URL/metadata-centric); media is shown only on explicit per-item opt-in.
+  - Detection recall is structurally bounded to the publicly-indexed web (Brave/general search); closed platforms are unreachable by API — surface this honestly (D9), do not imply exhaustive scanning.
+
+scope_out:
+  - Reverse-image detection (Google Cloud Vision WEB_DETECTION) and multi-source fan-out (SerpAPI / TinEye) — a LATER detection objective. It uploads the victim's intimate reference image (the system's most sensitive datum) and depends on the security objective (consent gate, on-device hashing, encryption).
+  - Automated submission of takedown / KCSC (방심위) review / injunction filings — D9 provides referral links only; filing stays manual.
+  - Storing / hosting / re-distributing the content itself.
+  - Perpetrator identification or tracking.
+  - Page screenshot capture (Vercel headless-browser constraints → a later objective or external service).
+  - Authentication / access control / multi-user — single-user MVP. A security objective (auth + encryption + retention policy) is a PREREQUISITE before real victim data is entered.
+
+# SCR-620/530 — loop owner(자격증명 게이트) + 성취 PR 자동 ship opt-in.
+owner: whitemoons
+auto_merge_on_achievement: true
