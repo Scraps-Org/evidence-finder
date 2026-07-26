@@ -20,7 +20,7 @@ git diff origin/main...HEAD
 
 - [ ] **변경 라인 수가 400줄 이하** (Phase long-lived 예외)
 - [ ] **하나의 책임** 만 다루는가 (리팩토링 + 기능 분리)
-- [ ] 모든 커밋 메시지가 **Conventional Commits 형식** + Linear ID footer
+- [ ] 모든 커밋 메시지가 **Conventional Commits 형식** + `Refs SCR-N` footer
 - [ ] `.env`, 시크릿, API 키가 **누출되지 않았는가**?
 - [ ] **테스트가 추가/수정** 됐는가? 새 코드 경로에 대한 커버리지
 - [ ] **`.env.example` 갱신** (새 환경변수가 있다면)
@@ -30,7 +30,7 @@ git diff origin/main...HEAD
 
 ## 3. 코드 품질 점검
 
-- TODO/FIXME 새로 추가하지 않았는가? (있다면 Linear 이슈로)
+- TODO/FIXME 새로 추가하지 않았는가? (있다면 Plane 항목으로)
 - `console.log()`, 디버그 코드 잔존 X (`console.warn` / `console.error` 는 OK)
 - 주석 처리된 죽은 코드 X
 - 매직 넘버를 상수로 추출

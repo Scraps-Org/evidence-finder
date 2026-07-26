@@ -28,7 +28,7 @@ None
 None
 
 ## Checklist
-- [ ] 브랜치명이 `<type>/<linear-id>-<kebab-description>` 형식
+- [ ] 브랜치명이 `<type>/scr-<n>-<kebab-description>` 형식
 - [ ] PR 제목이 Conventional Commits + `(SCR-XXX)` 포함
 - [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 로컬 통과
 - [ ] 새 환경변수가 있다면 `.env.example` 갱신 (`NEXT_PUBLIC_*` 접두사 클라이언트 노출 정합)
