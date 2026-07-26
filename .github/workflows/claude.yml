@@ -4,7 +4,6 @@ name: Claude Code
 # 사전 준비:
 #   1) Anthropic의 Claude Code GitHub App을 조직에 설치
 #   2) Repo Secrets에 ANTHROPIC_API_KEY 등록
-#   3) Linear MCP 사용을 위한 LINEAR_API_KEY도 함께 등록 (선택)
 
 on:
   issue_comment:
@@ -44,18 +43,10 @@ jobs:
 
           # 레포의 CLAUDE.md를 자동으로 읽어 모든 컨벤션을 그대로 따름
 
-          mcp_config: |
-            {
-              "mcpServers": {
-                "linear": {
-                  "type": "http",
-                  "url": "https://mcp.linear.app/mcp",
-                  "headers": {
-                    "Authorization": "Bearer ${{ secrets.LINEAR_API_KEY }}"
-                  }
-                }
-              }
-            }
+          # 트래커 MCP 없음. Linear 는 은퇴(SCR-1090)했고, 후속인 plane-ops 는
+          # CI 에서 돌 수 없다 — 해시 검증된 scraps-plane-ops 체크아웃과 Infisical
+          # 세션, PowerShell 7 이 전제이며 그중 어느 것도 러너에 없다.
+          # 항목 조작이 필요하면 사람이 로컬 세션에서 한다.
 
           allowed_tools: |
             Bash(git:*)
