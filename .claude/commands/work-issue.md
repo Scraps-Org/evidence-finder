@@ -1,15 +1,15 @@
 ---
-description: Linear 이슈를 받아 브랜치 → 구현 → 커밋 → PR 까지 한 번에 처리
-argument-hint: <linear-issue-id> (예: SCR-123)
+description: Plane 항목을 받아 브랜치 → 구현 → 커밋 → PR 까지 한 번에 처리
+argument-hint: <SCR-N> (예: SCR-123)
 ---
 
 # /work-issue
 
-Linear 이슈 `$ARGUMENTS` 를 처리한다. 다음 순서를 **그대로** 따른다.
+Plane 항목 `$ARGUMENTS` 를 처리한다. 다음 순서를 **그대로** 따른다.
 
 ## 1. 이슈 컨텍스트 로드
 
-Linear MCP 로 `$ARGUMENTS` 의 다음 정보:
+plane-ops `issue-get` 으로 `$ARGUMENTS` 의 다음 정보:
 
 - 제목, 설명, 우선순위
 - 라벨 (특히 `bug` / `feature` / `improvement`)
@@ -20,13 +20,14 @@ Linear MCP 로 `$ARGUMENTS` 의 다음 정보:
 
 ## 2. 상태 변경
 
-Linear MCP 로 이슈 → `In Progress`.
+plane-ops `issue-start` 로 → `In Progress`. 응답의 `changed` 를 확인한다 —
+거부/no-op 때도 exit 0 이라 종료코드만으로는 적용 여부를 알 수 없다.
 
 ## 3. 브랜치 분기
 
 ```bash
 git checkout main && git pull --rebase
-git checkout -b <type>/<linear-id-소문자>-<kebab-description>
+git checkout -b <type>/scr-<n>-<kebab-description>
 ```
 
 `type` (라벨 기반):
@@ -75,7 +76,7 @@ gh pr create --fill --draft
 
 PR 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 모든 섹션. CI 그린이면 `gh pr ready`.
 
-## 8. Linear 업데이트
+## 8. Plane 업데이트
 
 - PR 링크 코멘트
 - 상태 → `In Review`
@@ -87,5 +88,5 @@ PR 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 모든 섹션. CI 그린이면 `
 - 브랜치명
 - 커밋 메시지
 - PR URL
-- Linear 이슈 URL
+- Plane 항목 URL
 - 다음에 사람이 할 일 (리뷰어 지정 / 추가 컨텍스트 / 베타 테스트)
