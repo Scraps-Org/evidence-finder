@@ -1,4 +1,6 @@
 {
+  "//remoteControlAtStartup": "Remote Control 자동 시작 차단 (팀 공통). 확장은 프로젝트 레이어의 false 를 항상 존중한다 - 서버 플래그 롤아웃이 기본값을 켜도 이 레포에선 꺼진다.",
+  "remoteControlAtStartup": false,
   "//": "팀 전체가 공유하는 Claude Code 설정. 레포에 커밋되며 모든 개발자에게 동일하게 적용.",
 
   "permissions": {
