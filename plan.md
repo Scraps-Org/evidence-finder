@@ -2,12 +2,12 @@
 product: "evidence-finder"
 owner: lean-startup-agent
 status: active
-updated: 2026-06-26
-goal_version: dece06c268b8
+updated: 2026-07-03
+goal_version: d639ab1e071e
 acceptance:
-  - id: D9-recall-and-referral
-    hint: "The detection view renders a static notice that search surfaces only publicly-indexed exposure (closed platforms like Telegram/forums need manual reporting), and renders referral links to StopNCII.org, NCMEC Take It Down, and Google's explicit-image removal as downstream takedown actions (links only — not scanners). build + tsc pass."
-    high_impact: true
+  - id: A-1
+    hint: "Adding a URL to a case creates a Prisma Evidence row {url, detectedAt, pageTitle, domain, caseId}; a server route fetches the page to extract <title> + domain and stamps detectedAt; the evidence list renders URL + metadata only (no <img>/<video> pointing at the detected URL). next build + tsc --noEmit pass.\n"
+    high_impact: false
   - id: PKG-HEALTH
     hint: "clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다."
     high_impact: true
@@ -19,29 +19,64 @@ acceptance:
 
 ## 목표 (1줄)
 
-The user sees an honest recall-limit notice and referral links to takedown channels.
+A web service for NCII (non-consensual intimate image) victims to locate URLs of posts exposing them and compile each into a report-ready evidence package — URL, detection timestamp, page title/domain — exportable as CSV for KCSC (방심위) review, takedown requests, and injunctions. URL/metadata- centric: the distributed content itself is never stored and never shown by default. Detection = best-effort surfacer of publicly-indexed exposure feeding a human-triage workflow.
+
+## 빌드 맥락 (lean WHY)
+
+- 배경: NCII victims currently have no systematic tool to document exposure URLs for legal action (KCSC filing, injunctions, takedown requests). The manual evidence spine requires D3 (manual URL add → Evidence row + metadata fetch) as its core gateway — D4/D5/D6/D7/D8 shipped atop D3's presumed Evidence model foundation, making this a fast-verification dispatch. BC-74 dispatched as inconclusive; D8-candidate-triage (BC-79, pass, shipped 2026-06-26) confirmed the Candidate→Evidence routing works, which depends on the same Evidence model D3 must establish end-to-end.
+- 검증 가정(leap-of-faith): A URL-only evidence entry form with server-side metadata extraction (title, domain, timestamp) is the minimum useful capability for an NCII victim preparing a KCSC submission, before automated detection is added.
+- 범위 밖 (이번 cycle 안 만듦):
+  - D1-scaffold (already met — shipped BC-60)
+  - D2-case-input (already met — shipped BC-73)
+  - {'D4-content-shielded (already met — shipped BC-75, product_verdict': 'pass)'}
+  - {'D5-export-csv (already met — shipped BC-76, final_verdict': 'achieved)'}
+  - {'D6-source-adapter (already met — shipped BC-77, product_verdict': 'pass)'}
+  - {'D7-text-search-brave (already met — shipped BC-78, product_verdict': 'pass)'}
+  - {'D8-candidate-triage (already met — shipped BC-79, product_verdict': 'pass 2026-06-26)'}
+  - Reverse-image detection and multi-source fan-out (Google Cloud Vision WEB_DETECTION, SerpAPI, TinEye)
+  - Automated submission of takedown / KCSC (방심위) review / injunction filings
+  - Storing, hosting, or re-distributing the content itself
+  - Perpetrator identification or tracking
+  - Page screenshot capture (Vercel headless-browser constraints)
+  - Authentication / access control / multi-user (security objective prerequisite)
+- ⚠️ 외부 노출 금지(NDA): identifying terms and detected URLs are victim data — do not log or surface in error messages
 
 ## 해야할 일
 
-Constraints:
-- Next.js app must build and tsc --noEmit must pass (PKG-HEALTH gate); Vercel deploy stays green.
-- Persistence = Vercel Postgres via Prisma. The database stores ONLY identifying terms, candidate/evidence URLs, page metadata, and processing status — the distributed content (image/video) itself is never stored server-side.
-- Content is hidden by default (URL/metadata-centric); media is shown only on explicit per-item opt-in.
-- Detection recall is structurally bounded to the publicly-indexed web (Brave/general search); closed platforms are unreachable by API — surface this honestly (D9), do not imply exhaustive scanning.
+**파트 1 — 공유 데이터 계약 (Prisma 스키마 + 타입)** *(A-1)*
 
-Out of scope:
-- Reverse-image detection (Google Cloud Vision WEB_DETECTION) and multi-source fan-out (SerpAPI / TinEye) — a LATER detection objective. It uploads the victim's intimate reference image (the system's most sensitive datum) and depends on the security objective (consent gate, on-device hashing, encryption).
-- Automated submission of takedown / KCSC (방심위) review / injunction filings — D9 provides referral links only; filing stays manual.
-- Storing / hosting / re-distributing the content itself.
-- Perpetrator identification or tracking.
-- Page screenshot capture (Vercel headless-browser constraints → a later objective or external service).
-- Authentication / access control / multi-user — single-user MVP. A security objective (auth + encryption + retention policy) is a PREREQUISITE before real victim data is entered.
+`prisma/schema.prisma`에 `Evidence` 모델을 추가한다: 필드는 `id`, `url`, `detectedAt DateTime`, `pageTitle String?`, `domain String`, `caseId String`, 그리고 `Case` 모델로의 관계(`caseId`를 외래 키로). `Case` 모델이 아직 없으면 최소 필드(`id`, `createdAt`)만으로 함께 정의한다. `npx prisma migrate dev` 또는 `prisma db push`로 마이그레이션한다. 이 스키마가 이후 모든 파트의 단일 진실 공급원이 된다.
+
+**파트 2 — URL 제출 서버 라우트** *(A-1)*
+
+`src/app/api/evidence/route.ts` (Next.js App Router)를 생성한다. `POST` 핸들러는 요청 바디에서 `{ url: string, caseId: string }`를 받아 다음을 수행한다:
+
+1. Node.js 내장 `fetch`로 해당 URL을 `GET` 요청 — 응답 바디를 스트리밍하지 않고 텍스트로만 받는다.
+2. 정규식(`/<title[^>]*>([^<]*)<\/title>/i`)으로 `<title>` 텍스트를 추출한다 — 외부 HTML 파서 없이 stdlib 수준으로 처리.
+3. `new URL(url).hostname`으로 도메인을 추출한다.
+4. `detectedAt: new Date()`를 스탬프하여 Prisma `Evidence` 행을 생성한다.
+5. 생성된 행을 JSON으로 반환한다.
+
+응답 바디를 완전히 버퍼링하거나 스트리밍 저장하지 않으며, 원본 콘텐츠(이미지·영상 URL 등)를 DB에 일절 기록하지 않는다.
+
+**파트 3 — 증거 목록 UI 및 CSV 내보내기** *(A-1)*
+
+`src/app/cases/[caseId]/evidence/page.tsx`를 생성한다. 서버 컴포넌트로, Prisma로 해당 `caseId`의 `Evidence` 목록을 조회해 렌더링한다. 목록 항목은 `url`(텍스트 또는 `<a>` 링크), `pageTitle`, `domain`, `detectedAt`만 표시한다 — `<img>` / `<video>` / `<iframe>` 요소는 일절 사용하지 않는다. CSV 내보내기는 `src/app/api/evidence/export/route.ts`에 `GET` 핸들러로 구현한다: Prisma로 조회 후 `url,pageTitle,domain,detectedAt` 헤더의 CSV 문자열을 직접 생성(`Content-Type: text/csv`)하여 반환한다 — 외부 CSV 라이브러리 없이 템플릿 문자열로 처리.
+
+**파트 4 — 정적 분석 제약 검증** *(A-1 구조적 제약)*
+
+목표에 명시된 "외부 의존성 없이 표준 라이브러리(+ Prisma/Next.js 기본 스택) 수준으로 처리" 제약을 기계적으로 검증한다. `scripts/check-imports.ts` (또는 `.mjs`)를 작성하여 파트 2·3에서 생성한 소스 파일들을 AST(`ts-morph` 없이 `fs` + 정규식, 또는 `tsc` API 없이 텍스트 파싱)로 검사하고, `import`된 모듈 중 허용 목록(`next`, `react`, `@prisma/client`, Node 내장 모듈) 외의 외부 패키지가 있으면 비정상 종료(exit 1)한다. 코딩 플래너가 이 스크립트를 오라클로 사용한다. 또한 `next build && tsc --noEmit`이 오류 없이 통과하는 것을 별도 CI 단계로 명시한다.
+
+---
+
+*범위 외(이번 슬라이스 불필요):* 피해자 인증/계정 관리, 자동 크롤러/스케줄러, KCSC 직접 API 연동, 이미지 지문 비교, 알림 기능 — 모두 이후 슬라이스로 이연.
 
 ## 수용기준 힌트 (성공의 모습)
 
 frontmatter `acceptance` 와 1:1. evaluator 가 게이트에서 판단형 기준(P1)으로 도출.
 
-- D9-recall-and-referral: The detection view renders a static notice that search surfaces only publicly-indexed exposure (closed platforms like Telegram/forums need manual reporting), and renders referral links to StopNCII.org, NCMEC Take It Down, and Google's explicit-image removal as downstream takedown actions (links only — not scanners). build + tsc pass.
+- A-1: Adding a URL to a case creates a Prisma Evidence row {url, detectedAt, pageTitle, domain, caseId}; a server route fetches the page to extract <title> + domain and stamps detectedAt; the evidence list renders URL + metadata only (no <img>/<video> pointing at the detected URL). next build + tsc --noEmit pass.
+
 - PKG-HEALTH: clean env 에서 프로젝트 표준 빌드+테스트 명령이 우회 없이 통과하고 패키지가 정상 빌드·실행된다 (python: `make test` 또는 `uv run pytest` — PYTHONPATH 우회 금지; node: package.json `packageManager` 기준 PM 으로 lockfile clean install+build+test, 예 `pnpm i --frozen-lockfile && pnpm build && pnpm test` 또는 `npm ci && npm run build && npm test`). 패키지명·레이아웃이 제품과 정합한다 — pyproject `name`·`packages`(python) 또는 package.json `name`(node)이 제품명이고, 템플릿 잔재(`python-service-template`·`src/app` 패키지·`nextjs-service-template` 등)가 남지 않는다.
 
 ## 코딩 가이드 (planner)
