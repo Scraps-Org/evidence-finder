@@ -1,4 +1,5 @@
 import prisma from '~/lib/prisma';
+import { UnsafeUrlError, fetchPublicText } from '~/lib/safeFetch';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,8 +26,15 @@ export async function POST(req: Request) {
 
   const { url, caseId } = body;
 
-  const r = await fetch(url);
-  const html = await r.text();
+  let html: string;
+  try {
+    html = await fetchPublicText(url);
+  } catch (e) {
+    if (e instanceof UnsafeUrlError) {
+      return Response.json({ error: 'url not allowed' }, { status: 400 });
+    }
+    throw e;
+  }
 
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const pageTitle = m?.[1]?.trim() ?? '';
