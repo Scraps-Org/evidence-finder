@@ -1,13 +1,7 @@
 import prisma from '~/lib/prisma';
+import { csvCell } from '~/lib/csvCell';
 
 export const dynamic = 'force-dynamic';
-
-function csvEscape(value: string): string {
-  if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
 
 export async function GET(req: Request, { params }: { params: Promise<{ caseId: string }> }) {
   const { caseId } = await params;
@@ -32,11 +26,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ caseId: 
   const header = 'id,url,title,status,createdAt';
   const lines = rows.map((row) =>
     [
-      csvEscape(row.id),
-      csvEscape(row.url),
-      csvEscape(row.title ?? ''),
-      csvEscape(row.status),
-      csvEscape(row.createdAt ? row.createdAt.toISOString() : ''),
+      csvCell(row.id),
+      csvCell(row.url),
+      csvCell(row.title ?? ''),
+      csvCell(row.status),
+      csvCell(row.createdAt ? row.createdAt.toISOString() : ''),
     ].join(','),
   );
   const csv = [header, ...lines].join('\n');

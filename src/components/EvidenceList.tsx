@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { csvCell } from '~/lib/csvCell';
 
 interface EvidenceItem {
   id: string;
@@ -20,9 +21,6 @@ interface EvidenceListProps {
   evidence?: EvidenceItem[];
   caseId?: string;
 }
-
-const csvEscape = (value: string): string =>
-  /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
 const EvidenceList: React.FC<EvidenceListProps> = ({ items, evidence, caseId }) => {
   const list = evidence ?? items ?? [];
@@ -45,7 +43,7 @@ const EvidenceList: React.FC<EvidenceListProps> = ({ items, evidence, caseId }) 
         item.pageTitle ?? item.title ?? '',
         item.domain ?? '',
       ]
-        .map((field) => csvEscape(String(field)))
+        .map((field) => csvCell(String(field)))
         .join(',');
     });
     const csv = [header, ...rows].join('\n');
